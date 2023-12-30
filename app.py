@@ -16,15 +16,46 @@ class Entry(db.Model):
     title = db.Column(db.String(100))
     content = db.Column(db.Text)
 
-#generate the header for api requests
+#-----------------------------------------------------------------------
+# API header
+#-----------------------------------------------------------------------
+
 api_key = os.environ.get('API_KEY')
 username = os.environ.get('USER_NAME')
 auth_header = base64.b64encode(f"{username}:{api_key}".encode()).decode()
 headers = {
-    'User-Agent': 'e621-Favorite-Tracker/1.0 (user: overburn12)',
+    'User-Agent': f"e621-Favorite-Tracker/1.0 (user: {username})",
     'Authorization': f"Basic {auth_header}"
 }
 
+#-----------------------------------------------------------------------
+# API timer
+#-----------------------------------------------------------------------
+
+import time
+
+def get_api_response(request_url):
+    if not hasattr(get_api_response, "last_request_time"):
+        get_api_response.last_request_time = 0
+
+    current_time = time.time()
+    time_since_last_request = current_time - get_api_response.last_request_time
+
+    if time_since_last_request < 1:
+        time.sleep(1 - time_since_last_request)
+
+    response = requests.get('https://e621.net/' + request_url, headers=headers)
+    get_api_response.last_request_time = time.time()
+
+    if response.status_code == 200:
+        return jsonify(response.json())
+    else:
+        return jsonify({
+            'error': 'Failed to fetch data',
+            'status_code': response.status_code,
+            'response': response.text
+        }), response.status_code
+    
 #-----------------------------------------------------------------------
 # routes
 #-----------------------------------------------------------------------
@@ -35,18 +66,7 @@ def main_page():
 
 @app.route('/get_new')
 def fetch_recent_posts():
-    url = 'https://e621.net/posts.json?limit=100'
-
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return jsonify(response.json())
-    else:
-        # Return more detailed error information
-        return jsonify({
-            'error': 'Failed to fetch data',
-            'status_code': response.status_code,
-            'response': response.text
-        }), response.status_code
+    return get_api_response('posts.json?limit=100')
 
 #-----------------------------------------------------------------------
 

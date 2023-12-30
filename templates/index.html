@@ -10,13 +10,41 @@
             gap: 10px;
         }
         .image-item {
-            width: 100%;
-            height: auto;
+            width: 200px;
+            height: 200px;
+            object-fit: contain;
+            object-position: center;
+            cursor: pointer;
+        }
+        #modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+        }
+        #modal-content {
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 20px;
+            width: 80%; /* Could be more or less, depending on screen size */
+            max-width: 800px; /* Maximum width */
         }
     </style>
 </head>
 <body>
     <div id="image-grid"></div>
+
+    <!-- The Modal -->
+    <div id="modal">
+        <div id="modal-content">
+            <img id="full-image" src="" alt="Full Size Image" style="width:100%">
+        </div>
+    </div>
+
     <script>
         window.onload = function() {
             fetch('/get_new')
@@ -24,16 +52,50 @@
                 .then(data => {
                     const grid = document.getElementById('image-grid');
                     data.posts.forEach(post => {
+                        // Always use image thumbnail for grid view
                         const imgElement = document.createElement('img');
-                        imgElement.src = post.preview.url; // Extracting thumbnail URL
-                        imgElement.classList.add('image-item');
+                        imgElement.src = post.preview.url;
+                        imgElement.classList.add('media-item');
+                        imgElement.onclick = function() {
+                            // Pass the full URL and file type to showModal
+                            showModal(post.file.url, post.file.ext);
+                        };
                         grid.appendChild(imgElement);
                     });
                 })
                 .catch(error => {
                     console.error('Error fetching images:', error);
                 });
+    
+            function showModal(mediaUrl, fileType) {
+                const modalContent = document.getElementById('modal-content');
+                modalContent.innerHTML = ''; // Clear previous content
+    
+                let mediaElement;
+                if (fileType === 'webm') {
+                    mediaElement = document.createElement('video');
+                    mediaElement.src = mediaUrl;
+                    mediaElement.controls = true;
+                    mediaElement.style.width = '100%';
+                    mediaElement.autoplay = true;
+                } else {
+                    mediaElement = document.createElement('img');
+                    mediaElement.src = mediaUrl;
+                    mediaElement.style.width = '100%';
+                }
+    
+                modalContent.appendChild(mediaElement);
+                document.getElementById('modal').style.display = 'block';
+            }
+    
+            window.onclick = function(event) {
+                if (event.target == document.getElementById('modal')) {
+                    document.getElementById('modal').style.display = "none";
+                }
+            }
         };
     </script>
+    
+    
 </body>
 </html>

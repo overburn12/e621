@@ -10,131 +10,236 @@
         }
         #image-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            grid-gap: 5px; /* Set the desired spacing value here */
+            text-align: justify;
         }
-        .image-item {
-            width: 200px;
-            height: 200px;
-            object-fit: contain;
-            object-position: center;
-            cursor: pointer;
+        /*.image-item {
+            width: 150px;
+            height: auto;
+        }*/
+        .buffer-container{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2px;
         }
         .grid-container{
             background-color: #152f56;
+            /*width: 150px;*/
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            padding-bottom: 2px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .caption-box{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
         #modal {
-            display: none; /* Hidden by default */
-            position: fixed; /* Stay in place */
-            z-index: 1; /* Sit on top */
+            display: none; 
+            position: fixed; 
+            z-index: 1; 
             left: 0;
             top: 0;
-            width: 100%; /* Full width */
-            height: 100%; /* Full height */
-            overflow: auto; /* Enable scroll if needed */
-            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+            width: 100%; 
+            height: 100%; 
+            overflow: auto; 
+            background-color: rgba(0,0,0,0.8);
         }
         #modal-content {
-            margin: 15% auto; /* 15% from the top and centered */
+            margin: 15% auto;
             padding: 20px;
-            width: 80%; /* Could be more or less, depending on screen size */
-            max-width: 800px; /* Maximum width */
+            width: 80%; 
+            max-width: 800px; 
+            background-color: #152f56;
+            color: antiquewhite;
+            border-radius: 10px;
         }
     </style>
 </head>
 <body>
+    <input type="text" id="searchText" placeholder="Search..." onkeydown="if(event.keyCode === 13) search(this.value)">
+    <br>
     <div id="image-grid">
     </div>
 
     <div id="modal">
-        <div id="modal-content">
-            <img id="full-image" src="" alt="Full Size Image" style="width:100%">
-        </div>
+        <div id="modal-content"></div>
     </div>
 
     <script>
-        window.onload = function() {
-            const grid = document.getElementById('image-grid');
-            let lastPostId = null;
-            let isLoading = false;
-    
-            function fetchPosts() {
-                if (isLoading) return;
-                isLoading = true;
-    
-                const url = lastPostId ? `/get_new?before=${lastPostId}` : '/get_new';
-                fetch(url)
-                    .then(response => response.json())
-                    .then(data => {
-                        isLoading = false;
-                        data.posts.forEach(post => {
+        const grid = document.getElementById('image-grid');
+        let lastPostId = null;
+        let isLoading = false;
+        let inSearch = true;
+        let searchTags = "rating:s"; ///////////////////////////////////////////////////////////////default for SFW environment
+        document.getElementById('searchText').value = searchTags;
 
-                        const gridContainer = document.createElement('div');
-                        gridContainer.classList.add('grid-container');
-                        
-                        const imgElement = document.createElement('img');
-                        imgElement.src = post.preview.url;
-                        imgElement.classList.add('media-item');
-                        imgElement.onclick = function() {
-                            showModal(post);
-                        };
-                        
-                        const textDiv = document.createElement('div');
-                        textDiv.innerHTML += 'id: ' + post.id + '<br>';
-                        textDiv.innerHTML += 'score: ' + post.score.total + '<br>';
-                        textDiv.innerHTML += 'rating: ' + post.rating + '<br>';
-                        textDiv.innerHTML += 'fav count: ' + post.fav_count;
-                        gridContainer.append(imgElement);
-                        gridContainer.append(textDiv);
-                        grid.append(gridContainer);
-                        lastPostId = post.id;
-                    });
-                })
-                .catch(error => {
-                    console.error('Error fetching images:', error);
-                    isLoading = false;
-                });
+        function generateQueryUrl(endpoint, query_args) {
+            let url = endpoint;
+            if (query_args.length > 0) url += '?';
+          
+            query_args.forEach((arg, index) => {
+              url += arg;
+              if (index !== query_args.length - 1) url += '&';
+            });
+          
+            return url;
         }
 
-        // Initial fetch
-        fetchPosts();
+        function convertDateFormat(inputDate) {
+            const date = new Date(inputDate);
+            
+            const year = date.getFullYear().toString();
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            
+            const convertedDate = `${year}-${month}-${day} ${hours}:${minutes}`;
+            return convertedDate;
+        }
 
-        // Infinite scrolling
+        function addImageToGrid(post){
+            //the conatiner for the grid
+            const gridContainer = document.createElement('div');
+            gridContainer.classList.add('grid-container');
+
+            //the image
+            const imgElement = document.createElement('img');
+            imgElement.src = post.preview.url;
+            imgElement.classList.add('media-item');
+
+            //click the image to go to modal view
+            imgElement.onclick = function() {
+                showModal(post);
+            };
+
+            //the text label
+            const textDiv = document.createElement('div');
+            textDiv.classList.add('caption-box');
+            textDiv.innerHTML = 's:' + post.score.total + ' f:' + post.fav_count + ' c:' + post.comment_count + ' <br>';
+            post.tags.artist.forEach(artistName => {textDiv.innerHTML += artistName + '<br>'});
+
+            //select the color of the grid panel
+            const isFavorited = post.is_favorited; 
+            const fileType = post.file.ext;
+            if (fileType === 'webm') 
+                gridContainer.style.backgroundColor = "#3c1556";
+            if (fileType === 'gif')
+                gridContainer.style.backgroundColor = "#153c56"; 
+            if (isFavorited === true)
+                gridContainer.style.backgroundColor = "#b1ce0e";          
+
+            //compile
+            const bufferContainer = document.createElement('div');
+            bufferContainer.classList.add('buffer-container');
+            gridContainer.append(imgElement);
+            gridContainer.append(textDiv);
+            bufferContainer.append(gridContainer);
+            grid.append(bufferContainer);
+
+            //remember the last post for pagination
+            lastPostId = post.id;
+        }
+
+        function fetchPosts() {
+            if (isLoading) return;
+            isLoading = true;
+            const queryArgs = [];
+
+            if (lastPostId) queryArgs.push(`before=${lastPostId}`);
+            if (searchTags != "") queryArgs.push(`tags=${searchTags}`);
+
+            fetch(generateQueryUrl('/list', queryArgs))
+            .then(response => response.json())
+            .then(data => {
+                isLoading = false;
+                data.posts.forEach(post => {
+                    addImageToGrid(post);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching images:', error);
+                isLoading = false;
+                inSearch = false;
+            });
+        }
+
+        function search(searchText) {
+            grid.innerHTML = '';
+            searchTags = document.getElementById('searchText').value;
+            inSearch = true;
+            lastPostId = null;
+            fetchPosts();
+        }
+
+        searchText.addEventListener('input', function() {
+            inSearch = false;
+        });
+
         window.onscroll = function() {
+            if (!inSearch) return;
             if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500 && !isLoading) {
                 fetchPosts();
             }
         };
 
-            function showModal(post) {
-                const mediaUrl = post.file.url;
-                const fileType = post.file.ext;
-                const modalContent = document.getElementById('modal-content');
-                modalContent.innerHTML = ''; // Clear previous content
-    
-                let mediaElement;
-                if (fileType === 'webm') {
-                    mediaElement = document.createElement('video');
-                    mediaElement.src = mediaUrl;
-                    mediaElement.controls = true;
-                    mediaElement.style.width = '100%';
-                    mediaElement.autoplay = true;
-                } else {
-                    mediaElement = document.createElement('img');
-                    mediaElement.src = mediaUrl;
-                    mediaElement.style.width = '100%';
-                }
-    
-                modalContent.appendChild(mediaElement);
-                document.getElementById('modal').style.display = 'block';
+        function showModal(post) {
+            const mediaUrl = post.file.url;
+            const fileType = post.file.ext; 
+            const modalContent = document.getElementById('modal-content');
+            modalContent.innerHTML = ''; 
+
+            let mediaElement;
+            if (fileType === 'webm') {
+                mediaElement = document.createElement('video');
+                mediaElement.src = mediaUrl;
+                mediaElement.controls = true;
+                mediaElement.style.width = '100%';
+                mediaElement.autoplay = true;
+            } else {
+                mediaElement = document.createElement('img');
+                mediaElement.src = mediaUrl;
+                mediaElement.style.width = '100%';
             }
-    
-            window.onclick = function(event) {
-                if (event.target == document.getElementById('modal')) {
-                    document.getElementById('modal').style.display = "none";
-                }
+
+            const textDiv = document.createElement('div');
+
+            textDiv.innerHTML += 'id: ' + post.id + '<br>';
+            textDiv.innerHTML += 'score: ' + post.score.total + '<br>';
+            textDiv.innerHTML += 'rating: ' + post.rating + '<br>';
+            textDiv.innerHTML += 'fav count: ' + post.fav_count + '<br>';
+            textDiv.innerHTML += 'is favorited: ' + post.is_favorited + '<br>';
+            textDiv.innerHTML += '[tags]<br>';
+
+            post.tags.artist.forEach(datapoint => {textDiv.innerHTML += 'artist: ' + datapoint + '<br>'});
+            post.tags.character.forEach(datapoint => {textDiv.innerHTML += 'character: ' + datapoint + '<br>'});
+            post.tags.species.forEach(datapoint => {textDiv.innerHTML += 'species: ' + datapoint + '<br>'});
+            post.tags.general.forEach(datapoint => {textDiv.innerHTML += datapoint + '<br>'});
+
+            modalContent.appendChild(mediaElement);
+            modalContent.appendChild(textDiv);
+
+            document.getElementById('modal').style.display = 'block';
+        }
+
+        window.onclick = function(event) {
+            if (event.target == document.getElementById('modal')) {
+                document.getElementById('modal-content').innerHTML = '';
+                document.getElementById('modal').style.display = "none";
             }
         };
+
+        fetchPosts();
     </script>
     
     

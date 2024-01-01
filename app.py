@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 import requests, json, os
 import base64
@@ -47,15 +47,19 @@ def get_api_response(request_url):
     response = requests.get('https://e621.net/' + request_url, headers=headers)
     get_api_response.last_request_time = time.time()
 
-    if response.status_code == 200:
-        return jsonify(response.json())
-    else:
-        return jsonify({
-            'error': 'Failed to fetch data',
-            'status_code': response.status_code,
-            'response': response.text
-        }), response.status_code
+    return response
     
+#-----------------------------------------------------------------------
+# functions
+#-----------------------------------------------------------------------
+
+def filter_results(response_json):
+    filtered_return = {'posts': []}
+
+    for post in response_json['posts']:
+        filtered_return['posts'].append(post)
+
+    return filtered_return
 #-----------------------------------------------------------------------
 # routes
 #-----------------------------------------------------------------------
@@ -66,7 +70,26 @@ def main_page():
 
 @app.route('/get_new')
 def fetch_recent_posts():
-    return get_api_response('posts.json?limit=100')
+    before_id = request.args.get('before')
+    page_size = 300
+    request_url = f'posts.json?limit={page_size}'
+
+    if before_id:
+        request_url += f'&page=b{before_id}'
+
+
+    response = get_api_response(request_url)
+    response_json = response.json()
+
+    if response.status_code == 200:
+        filtered_results = filter_results(response_json)
+        return jsonify(filtered_results)
+    else:
+        return jsonify({
+            'error': 'Failed to fetch data',
+            'status_code': response.status_code,
+            'response': response.text
+        }), response.status_code
 
 #-----------------------------------------------------------------------
 

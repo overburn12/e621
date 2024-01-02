@@ -7,6 +7,81 @@
         body{
             background-color: #020f23;
             color: antiquewhite;
+
+            --color-background: #020f23;
+            --color-foreground: #152f56;
+            --color-section: #1f3c67;
+            --color-section-lighten-5: #25477b;
+            --color-section-lighten-10: #2b538e;
+            --color-section-darken-5: #193153;
+            --color-table-border: #2b538e;
+            --color-section-pending: #1f3c67;
+            --color-section-pending-border: #020f23;
+            --color-text: #fff;
+            --color-text-muted: #999;
+            --color-text-white: #fff;
+            --color-text-table-header: #e6e6e6;
+            --color-link: #b4c7d9;
+            --color-link-hover: #e9f2fa;
+            --color-link-active: #e8c446;
+            --color-button-active: #e8c446;
+            --color-link-last-page: #666;
+            --color-success: #006400;
+            --color-success-darken-5: #004b00;
+            --color-danger: maroon;
+            --color-danger-darken-5: #670000;
+            --color-danger-darken-10: #4d0000;
+            --color-warning: sienna;
+            --color-warning-darken-5: #8c4827;
+            --color-rating-explicit: #e45f5f;
+            --color-rating-questionable: #ffe666;
+            --color-rating-safe: #3e9e49;
+            --color-score-positive: #3e9e49;
+            --color-score-negative: #e45f5f;
+            --color-active-tag: #006ffa;
+            --color-dtext-quote: #b4c7d9;
+            --color-dtext-code: #ffe380;
+            --color-dtext-section: #17a2b8;
+            --color-user-member: #b4c7d9;
+            --color-user-member-alt: #2e76b4;
+            --color-user-privileged: #b4c7d9;
+            --color-user-privileged-alt: #2e76b4;
+            --color-user-blocked: #b4c7d9;
+            --color-user-blocked-alt: #2e76b4;
+            --color-user-former-staff: #78dca5;
+            --color-user-former-staff-alt: #4da073;
+            --color-user-janitor: #d82828;
+            --color-user-janitor-alt: #cc5151;
+            --color-user-moderator: #d82828;
+            --color-user-moderator-alt: #cc5151;
+            --color-user-admin: #e69500;
+            --color-user-admin-alt: #9d6703;
+            --color-tag-general: #b4c7d9;
+            --color-tag-general-alt: #2e76b4;
+            --color-tag-artist: #f2ac08;
+            --color-tag-artist-alt: #fbd67f;
+            --color-tag-copyright: #d0d;
+            --color-tag-copyright-alt: #ff5eff;
+            --color-tag-character: #0a0;
+            --color-tag-character-alt: #2bff2b;
+            --color-tag-species: #ed5d1f;
+            --color-tag-species-alt: #f6b295;
+            --color-tag-invalid: #ff3d3d;
+            --color-tag-invalid-alt: #ffbdbd;
+            --color-tag-meta: #fff;
+            --color-tag-meta-alt: #666;
+            --color-tag-lore: #282;
+            --color-tag-lore-alt: #5fdb5f;
+            --color-tag-pool: wheat;
+            --color-tag-pool-alt: #d0b27a;
+            --color-spoiler-link: #b4c7d9;
+            --color-spoiler-link-hover: #e9f2fa;
+
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
         #image-grid {
             display: grid;
@@ -14,10 +89,6 @@
             grid-gap: 5px; /* Set the desired spacing value here */
             text-align: justify;
         }
-        /*.image-item {
-            width: 150px;
-            height: auto;
-        }*/
         .buffer-container{
             display: flex;
             flex-direction: column;
@@ -26,8 +97,8 @@
             padding: 2px;
         }
         .grid-container{
+            max-width: 150px;
             background-color: #152f56;
-            /*width: 150px;*/
             border-radius: 10px;
             overflow: hidden;
             position: relative;
@@ -42,6 +113,23 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
+        }
+        .tag-container{
+            border-radius: 10px;
+            background-color: #020f23;
+            padding: 5px;
+        }
+        #fav-button{
+            width: 100px;
+            height: 20px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #content-divider{
+            margin-left: 20px;
         }
         #modal {
             display: none; 
@@ -62,13 +150,47 @@
             background-color: #152f56;
             color: antiquewhite;
             border-radius: 10px;
+
+            display: flex;
+            flex-direction: row;
+        }
+        #search-box{
+            width: 80%;
+            background-color: var(--color-foreground);
+            border-radius: 10px;
+            padding: 10px;
+        }
+        #searchText{
+            width: calc(100% - 15px);
+        }
+
+        a{
+            text-decoration: none;
+        }
+        .tags-artist{
+            color: var(--color-tag-artist); 
+        }
+        .tags-character{
+            color: var(--color-tag-character); 
+        }
+        .tags-species{
+            color: var(--color-tag-species); 
+        }
+        .tags-general{
+            color: var(--color-tag-general); 
         }
     </style>
 </head>
 <body>
-    <input type="text" id="searchText" placeholder="Search..." onkeydown="if(event.keyCode === 13) search(this.value)">
+    <div id="search-box">
+        <input type="text" id="searchText" placeholder="Search..." onkeydown="if(event.keyCode === 13) search(this.value)">
+    </div>
+
     <br>
-    <div id="image-grid">
+    
+    <div style="width: 100%;">
+        <div id="image-grid">
+        </div>
     </div>
 
     <div id="modal">
@@ -77,10 +199,17 @@
 
     <script>
         const grid = document.getElementById('image-grid');
-        let lastPostId = null;
+        let curPage = 1;
         let isLoading = false;
         let inSearch = true;
-        let searchTags = "rating:s"; ///////////////////////////////////////////////////////////////default for SFW environment
+        let searchTags = "";
+
+        {% if tags %}
+            searchTags = "{{ tags }}";
+        {% else %}
+            searchTags = "rating:s"; ///////////////////////////////////////////////////////////////default for SFW environment
+        {% endif %}
+
         document.getElementById('searchText').value = searchTags;
 
         function generateQueryUrl(endpoint, query_args) {
@@ -92,6 +221,26 @@
               if (index !== query_args.length - 1) url += '&';
             });
           
+            return url;
+        }
+
+        function encodeURL(url) {
+            let encodedURL = '';
+            
+            // Split the URL into parts using '?'
+            const urlParts = url.split('?');
+            
+            if (urlParts.length === 2) {
+                // Encode the query string
+                const queryString = urlParts[1];
+                const encodedQueryString = encodeURIComponent(queryString);
+                
+                // Reconstruct the URL by joining the encoded query string
+                encodedURL = `${urlParts[0]}?${encodedQueryString}`;
+                
+                return encodedURL;
+            }
+            
             return url;
         }
 
@@ -126,8 +275,11 @@
             //the text label
             const textDiv = document.createElement('div');
             textDiv.classList.add('caption-box');
-            textDiv.innerHTML = 's:' + post.score.total + ' f:' + post.fav_count + ' c:' + post.comment_count + ' <br>';
-            post.tags.artist.forEach(artistName => {textDiv.innerHTML += artistName + '<br>'});
+            textDiv.innerHTML = post.id + '<br>'; ////////////remove when done debugging
+            textDiv.innerHTML += 's:' + post.score.total + ' f:' + post.fav_count + ' c:' + post.comment_count + ' <br>';
+            post.tags.artist.forEach(artistName => {
+                textDiv.innerHTML += `<a href="/search?tags=${artistName}" class="tags-artist">` + artistName + '</a><br>';
+            });
 
             //select the color of the grid panel
             const isFavorited = post.is_favorited; 
@@ -139,16 +291,13 @@
             if (isFavorited === true)
                 gridContainer.style.backgroundColor = "#b1ce0e";          
 
-            //compile
+            //build the div structure
             const bufferContainer = document.createElement('div');
             bufferContainer.classList.add('buffer-container');
             gridContainer.append(imgElement);
             gridContainer.append(textDiv);
             bufferContainer.append(gridContainer);
             grid.append(bufferContainer);
-
-            //remember the last post for pagination
-            lastPostId = post.id;
         }
 
         function fetchPosts() {
@@ -156,13 +305,18 @@
             isLoading = true;
             const queryArgs = [];
 
-            if (lastPostId) queryArgs.push(`before=${lastPostId}`);
+            if (curPage > 1) queryArgs.push(`page=${curPage}`);
             if (searchTags != "") queryArgs.push(`tags=${searchTags}`);
 
             fetch(generateQueryUrl('/list', queryArgs))
             .then(response => response.json())
             .then(data => {
                 isLoading = false;
+                //stop paginating if theres no more data to return
+                if (data.posts.length === 0) {
+                    inSearch = false; 
+                    return;
+                }
                 data.posts.forEach(post => {
                     addImageToGrid(post);
                 });
@@ -175,11 +329,7 @@
         }
 
         function search(searchText) {
-            grid.innerHTML = '';
-            searchTags = document.getElementById('searchText').value;
-            inSearch = true;
-            lastPostId = null;
-            fetchPosts();
+            window.location.href = `/search?tags=${searchText}`;
         }
 
         searchText.addEventListener('input', function() {
@@ -189,6 +339,7 @@
         window.onscroll = function() {
             if (!inSearch) return;
             if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500 && !isLoading) {
+                curPage = curPage + 1;
                 fetchPosts();
             }
         };
@@ -212,22 +363,53 @@
                 mediaElement.style.width = '100%';
             }
 
-            const textDiv = document.createElement('div');
+            const favDiv = document.createElement('div');
+            const favDivContainer = document.createElement('div');
+            favDiv.id = 'fav-button';
+            setFavoriteButton(post.is_favorited, favDiv, post.id);
+            favDivContainer.appendChild(favDiv);
 
+            const textDiv = document.createElement('div');
+            textDiv.style.paddingTop = '10px'; 
+            textDiv.style.paddingBottom = '10px'; 
+            textDiv.innerHTML += 'date: ' + convertDateFormat(post.created_at) + '<br>';
             textDiv.innerHTML += 'id: ' + post.id + '<br>';
             textDiv.innerHTML += 'score: ' + post.score.total + '<br>';
             textDiv.innerHTML += 'rating: ' + post.rating + '<br>';
-            textDiv.innerHTML += 'fav count: ' + post.fav_count + '<br>';
-            textDiv.innerHTML += 'is favorited: ' + post.is_favorited + '<br>';
-            textDiv.innerHTML += '[tags]<br>';
+            textDiv.innerHTML += 'fav count: ' + post.fav_count;
 
-            post.tags.artist.forEach(datapoint => {textDiv.innerHTML += 'artist: ' + datapoint + '<br>'});
-            post.tags.character.forEach(datapoint => {textDiv.innerHTML += 'character: ' + datapoint + '<br>'});
-            post.tags.species.forEach(datapoint => {textDiv.innerHTML += 'species: ' + datapoint + '<br>'});
-            post.tags.general.forEach(datapoint => {textDiv.innerHTML += datapoint + '<br>'});
+            const tagsDiv = document.createElement('div');
+            tagsDiv.classList.add('tag-container');
+            tagsDiv.innerHTML = '';
 
-            modalContent.appendChild(mediaElement);
-            modalContent.appendChild(textDiv);
+            tagsDiv.innerHTML += '<b>Artist</b><br>';
+            post.tags.artist.forEach(datapoint => {
+                tagsDiv.innerHTML += `<a href ="/search?tags=${datapoint}" class="tags-artist">` + datapoint + '</a><br>';
+            });
+
+            tagsDiv.innerHTML += '<br><b>Character</b><br>';
+            post.tags.character.forEach(datapoint => {
+                tagsDiv.innerHTML += `<a href ="/search?tags=${datapoint}" class="tags-character">` + datapoint + '</a><br>';
+            });
+
+            tagsDiv.innerHTML += '<br><b>Tags</b><br>';
+            post.tags.species.forEach(datapoint => {
+                tagsDiv.innerHTML += `<a href ="/search?tags=${datapoint}" class="tags-species">` + datapoint + '</a><br>';
+            });
+
+            tagsDiv.innerHTML += '<br><b>General</b><br>';
+            post.tags.general.forEach(datapoint => {
+                tagsDiv.innerHTML += `<a href ="/search?tags=${datapoint}" class="tags-general">` + datapoint + '</a><br>';
+            });
+
+            const contentDiv = document.createElement('div');
+            contentDiv.id = 'content-divider';
+            contentDiv.appendChild(mediaElement);
+            contentDiv.appendChild(favDivContainer);
+            contentDiv.appendChild(textDiv);
+
+            modalContent.appendChild(tagsDiv);
+            modalContent.appendChild(contentDiv);
 
             document.getElementById('modal').style.display = 'block';
         }
@@ -238,6 +420,47 @@
                 document.getElementById('modal').style.display = "none";
             }
         };
+
+        function doFavorites(edit_mode, post_id){
+            const queryArgs = [];
+            var favButton = document.getElementById('fav-button');
+
+            queryArgs.push(`type=${edit_mode}`);
+            queryArgs.push(`post_id=${post_id}`);
+
+            fetch(generateQueryUrl('/fav', queryArgs))
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.text();
+            })
+            .then(text => {
+                console.log (text);
+                if (text === "key_facts") {
+                    if(edit_mode === "add"){
+                        console.log("set to green")
+                        setFavoriteButton(true, favButton, post_id);
+                    }else{
+                        console.log("set to red")
+                        setFavoriteButton(false, favButton, post_id);
+                    }
+                } 
+            })
+            .catch(error => {
+                console.error('There was a problem with the fetch operation:', error);
+            });
+        }
+
+        function setFavoriteButton(is_favorited, favDiv, post_id){
+            if(is_favorited){
+                favDiv.style.backgroundColor = "red";
+                favDiv.textContent = "Remove";
+                favDiv.addEventListener('click', () => doFavorites('delete', post_id));
+            }else{
+                favDiv.style.backgroundColor = "green";
+                favDiv.textContent = "Add";
+                favDiv.addEventListener('click', () =>  doFavorites('add', post_id));
+            }
+        }
 
         fetchPosts();
     </script>

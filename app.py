@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect, url_for, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 import requests, json, os
 import base64
@@ -57,6 +57,8 @@ def get_api_response(method, endpoint, args_list):
         response = requests.get('https://e621.net/' + request_url, headers=headers)
     elif method.lower() == 'post':
         response = requests.post('https://e621.net/' + request_url, headers=headers)
+    elif method.lower() == 'delete':
+        response = requests.delete('https://e621.net/' + request_url, headers=headers)
     else:
         print ("Method {method} invalid at get_api_response()")
         return {"error": "Method {method} invalid"}
@@ -83,7 +85,12 @@ def filter_results(response_json):
 
 @app.route('/')
 def main_page():
-    return render_template('index.html')
+    return redirect(url_for('search_function'))
+
+@app.route('/search')
+def search_function():
+    tags = request.args.get('tags')
+    return render_template('index.html', tags=tags)
 
 @app.route('/list', methods = ['GET'])
 def fetch_recent_posts():
@@ -91,11 +98,11 @@ def fetch_recent_posts():
         return jsonify({"error": "GET method required for /list"})
 
     args_list = []
-    before_id = request.args.get('before')
+    page_num = request.args.get('page')
     search_tags = request.args.get('tags')
 
-    if before_id:
-        args_list.append(f'page=b{before_id}')
+    if page_num:
+        args_list.append(f'page={page_num}')
     if search_tags:
         args_list.append(f'tags={search_tags}')
     if page_size:
@@ -116,19 +123,32 @@ def fetch_recent_posts():
 @app.route('/fav')
 def set_fav():
     post_id = request.args.get('post_id')
+    edit_type = request.args.get('type')
+
     if request.method == 'GET':
         if not post_id: 
             return jsonify({"error": "post_id argument missing"})
+        if not edit_type:
+            return jsonify({"error": "type argument missing"})
         
-        args_list = [f'post_id={post_id}']
-        response = get_api_response('POST', 'favorites.json', args_list)
-        print(jsonify(response.json()))
-        return jsonify(response.json())
+        if edit_type == 'add':
+            args_list = [f'post_id={post_id}']
+            response = get_api_response('POST', 'favorites.json', args_list)
+            return "key_facts"
+        elif edit_type == 'delete':
+            response = get_api_response('DELETE', f'favorites/{post_id}.json', [''])
+            if not response.content:
+                return "key_facts"
+            else:
+                return jsonify(response.json())
+        else:
+            jsonify({"error": "type argument invalid"})
     else:
         return jsonify({"error": "POST method required for favorites.json"})
     
-
-# id: 4506721  add this as a fav
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(app.static_folder, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 #-----------------------------------------------------------------------
 

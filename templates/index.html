@@ -119,10 +119,11 @@
             background-color: #020f23;
             padding: 5px;
         }
-        #fav-button{
+        .button-div{
             width: 100px;
             height: 20px;
             border-radius: 10px;
+            background-color: var(--color-section-lighten-10);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -207,40 +208,32 @@
         {% if tags %}
             searchTags = "{{ tags }}";
         {% else %}
-            searchTags = "rating:s"; ///////////////////////////////////////////////////////////////default for SFW environment
+            searchTags = ""; 
         {% endif %}
 
         document.getElementById('searchText').value = searchTags;
 
         function generateQueryUrl(endpoint, query_args) {
             let url = endpoint;
-            if (query_args.length > 0) url += '?';
-          
+            if (query_args.length > 0) 
+                url += '?';
             query_args.forEach((arg, index) => {
               url += arg;
-              if (index !== query_args.length - 1) url += '&';
+              if (index !== query_args.length - 1) 
+                url += '&';
             });
-          
             return url;
         }
 
         function encodeURL(url) {
             let encodedURL = '';
-            
-            // Split the URL into parts using '?'
             const urlParts = url.split('?');
-            
             if (urlParts.length === 2) {
-                // Encode the query string
                 const queryString = urlParts[1];
                 const encodedQueryString = encodeURIComponent(queryString);
-                
-                // Reconstruct the URL by joining the encoded query string
                 encodedURL = `${urlParts[0]}?${encodedQueryString}`;
-                
                 return encodedURL;
             }
-            
             return url;
         }
 
@@ -257,9 +250,45 @@
             return convertedDate;
         }
 
+        function timeAgo(datetimeStr) {
+            const [datePart, timePart] = datetimeStr.split(' ');
+            const [year, month, day] = datePart.split('-').map(Number);
+            const [hours, minutes] = timePart.split(':').map(Number);
+        
+            const date = new Date(year, month - 1, day, hours, minutes);
+            const now = new Date();
+        
+            let delta = Math.abs(now - date) / 1000; // Convert to seconds
+        
+            const years = Math.floor(delta / (3600 * 24 * 365));
+            delta -= years * 3600 * 24 * 365;
+        
+            const months = Math.floor(delta / (3600 * 24 * 30));
+            delta -= months * 3600 * 24 * 30;
+        
+            const days = Math.floor(delta / (3600 * 24));
+            delta -= days * 3600 * 24;
+        
+            const hoursLeft = Math.floor(delta / 3600) % 24;
+            delta -= hoursLeft * 3600;
+        
+            const minutesLeft = Math.floor(delta / 60) % 60;
+        
+            let result = '';
+            if (years > 0) result += `${years} years `;
+            if (months > 0) result += `${months} months `;
+            if (days > 0) result += `${days} days `;
+            if (hoursLeft > 0) result += `${hoursLeft} hours `;
+            if (minutesLeft > 0) result += `${minutesLeft} minutes `;
+        
+            return result.trim() + ' ago';
+        }
+
         function addImageToGrid(post){
             //the conatiner for the grid
+            const bufferContainer = document.createElement('div');
             const gridContainer = document.createElement('div');
+            bufferContainer.classList.add('buffer-container');
             gridContainer.classList.add('grid-container');
 
             //the image
@@ -274,11 +303,12 @@
 
             //the text label
             const textDiv = document.createElement('div');
+            textDiv.style.padding = "5px";
             textDiv.classList.add('caption-box');
-            textDiv.innerHTML = post.id + '<br>'; ////////////remove when done debugging
-            textDiv.innerHTML += 's:' + post.score.total + ' f:' + post.fav_count + ' c:' + post.comment_count + ' <br>';
+            //textDiv.innerHTML = post.id + ' ' + post.rating + '<br>'; ////////////remove when done debugging
+            textDiv.innerHTML += '🏆' + post.score.total + ' 💕' + post.fav_count + ' 📖' + post.comment_count;
             post.tags.artist.forEach(artistName => {
-                textDiv.innerHTML += `<a href="/search?tags=${artistName}" class="tags-artist">` + artistName + '</a><br>';
+                textDiv.innerHTML += `<br><a href="/search?tags=${artistName}" class="tags-artist">` + artistName + '</a>';
             });
 
             //select the color of the grid panel
@@ -287,13 +317,23 @@
             if (fileType === 'webm') 
                 gridContainer.style.backgroundColor = "#3c1556";
             if (fileType === 'gif')
-                gridContainer.style.backgroundColor = "#153c56"; 
+                gridContainer.style.backgroundColor = "var(--color-section-lighten-10)"; 
             if (isFavorited === true)
-                gridContainer.style.backgroundColor = "#b1ce0e";          
+                bufferContainer.style.backgroundColor = "white";  
+            bufferContainer.setAttribute('post_id', post.id.toString()); 
+            bufferContainer.setAttribute('is_favorited', post.is_favorited.toString());
+            
+            let my_vote = 0;
+            if (post.score.hasOwnProperty('my_vote')) {
+                my_vote = post.score.my_vote;
+            }
+
+            bufferContainer.setAttribute('my_vote', my_vote); 
+            bufferContainer.setAttribute('down_vote', post.score.down); 
+            bufferContainer.setAttribute('up_vote', post.score.up); 
+            bufferContainer.setAttribute('total_vote', post.score.total); 
 
             //build the div structure
-            const bufferContainer = document.createElement('div');
-            bufferContainer.classList.add('buffer-container');
             gridContainer.append(imgElement);
             gridContainer.append(textDiv);
             bufferContainer.append(gridContainer);
@@ -302,6 +342,7 @@
 
         function fetchPosts() {
             if (isLoading) return;
+            changeCursor();
             isLoading = true;
             const queryArgs = [];
 
@@ -364,19 +405,79 @@
             }
 
             const favDiv = document.createElement('div');
+            const spacerDiv = document.createElement('div');
+            const upDiv = document.createElement('div');
+            const downDiv = document.createElement('div');
+            const scoreDiv = document.createElement('div');
             const favDivContainer = document.createElement('div');
+
+            upDiv.addEventListener('click', function() {
+                doVotes(post.id, 1);
+              });
+              
+            downDiv.addEventListener('click', function() {
+                doVotes(post.id, -1);
+            });
+
             favDiv.id = 'fav-button';
-            setFavoriteButton(post.is_favorited, favDiv, post.id);
+            upDiv.id = 'up-div';
+            downDiv.id = 'down-div';
+            scoreDiv.id = 'score-div';
+
+            const containerDiv = getElementFromPostID(post.id);
+            upDiv.innerText = containerDiv.getAttribute('up_vote');
+            downDiv.innerText = containerDiv.getAttribute('down_vote');
+            scoreDiv.innerText = containerDiv.getAttribute('total_vote');
+
+            favDiv.classList.add('button-div');
+            upDiv.classList.add('button-div');
+            downDiv.classList.add('button-div');
+            scoreDiv.classList.add('button-div');
+            spacerDiv.classList.add('button-div');
+            scoreDiv.style.backgroundColor = "transparent";
+            spacerDiv.style.backgroundColor = "transparent";
+
+            const my_vote_score = containerDiv.getAttribute('my_vote');
+            
+            if(my_vote_score.toString() === "1"){
+                upDiv.style.backgroundColor = "var(--color-success)";
+            }
+            if(my_vote_score.toString() === "-1"){
+                downDiv.style.backgroundColor = "var(--color-success)";
+            }
+
+            favDivContainer.style = "display: flex; justify-content: space-between; align-items: center;";
+            setFavoriteButton(getIsFavorited(post.id), favDiv, post.id);
             favDivContainer.appendChild(favDiv);
+            favDivContainer.appendChild(spacerDiv);
+            favDivContainer.appendChild(upDiv);
+            favDivContainer.appendChild(scoreDiv);
+            favDivContainer.appendChild(downDiv);
 
             const textDiv = document.createElement('div');
             textDiv.style.paddingTop = '10px'; 
             textDiv.style.paddingBottom = '10px'; 
-            textDiv.innerHTML += 'date: ' + convertDateFormat(post.created_at) + '<br>';
+            date_time = convertDateFormat(post.created_at);
+            textDiv.innerHTML += 'date: ' + date_time + ' (' + timeAgo(date_time) + ')<br>';
             textDiv.innerHTML += 'id: ' + post.id + '<br>';
-            textDiv.innerHTML += 'score: ' + post.score.total + '<br>';
             textDiv.innerHTML += 'rating: ' + post.rating + '<br>';
-            textDiv.innerHTML += 'fav count: ' + post.fav_count;
+            textDiv.innerHTML += 'fav count: ' + post.fav_count + '<br>';
+
+            textDiv.innerHTML += 'pools: ';
+            post.pools.forEach(datapoint => {textDiv.innerHTML += ' ' + datapoint;});
+
+            textDiv.innerHTML += `<br><a href="https://e621.net/posts/${post.id}" class="tags-artist" target="_blank">Show on e621.net</a><br>`
+
+            textDiv.innerHTML += '<b>Description:</b> ' + post.description + '<br>';
+/*
+sources The source field of the post.
+pools An array of Pool IDs that the post is a part of.
+relationships (array group)
+    parent_id The ID of the post’s parent, if it has one.
+    has_children If the post has child posts (True/False)
+    has_active_children
+    children A list of child post IDs that are linked to t
+*/
 
             const tagsDiv = document.createElement('div');
             tagsDiv.classList.add('tag-container');
@@ -384,22 +485,37 @@
 
             tagsDiv.innerHTML += '<b>Artist</b><br>';
             post.tags.artist.forEach(datapoint => {
-                tagsDiv.innerHTML += `<a href ="/search?tags=${datapoint}" class="tags-artist">` + datapoint + '</a><br>';
+                tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" class="tags-artist">` + datapoint + '</a><br>';
             });
 
             tagsDiv.innerHTML += '<br><b>Character</b><br>';
             post.tags.character.forEach(datapoint => {
-                tagsDiv.innerHTML += `<a href ="/search?tags=${datapoint}" class="tags-character">` + datapoint + '</a><br>';
+                tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" class="tags-character">` + datapoint + '</a><br>';
+            });
+
+            tagsDiv.innerHTML += '<br><b>Copyright</b><br>';
+            post.tags.copyright.forEach(datapoint => {
+                tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" class="tags-copyright">` + datapoint + '</a><br>';
             });
 
             tagsDiv.innerHTML += '<br><b>Tags</b><br>';
             post.tags.species.forEach(datapoint => {
-                tagsDiv.innerHTML += `<a href ="/search?tags=${datapoint}" class="tags-species">` + datapoint + '</a><br>';
+                tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" class="tags-species">` + datapoint + '</a><br>';
             });
 
             tagsDiv.innerHTML += '<br><b>General</b><br>';
             post.tags.general.forEach(datapoint => {
-                tagsDiv.innerHTML += `<a href ="/search?tags=${datapoint}" class="tags-general">` + datapoint + '</a><br>';
+                tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" class="tags-general">` + datapoint + '</a><br>';
+            });
+
+            tagsDiv.innerHTML += '<br><b>Lore</b><br>';
+            post.tags.lore.forEach(datapoint => {
+                tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" class="tags-lore">` + datapoint + '</a><br>';
+            });
+
+            tagsDiv.innerHTML += '<br><b>Meta</b><br>';
+            post.tags.meta.forEach(datapoint => {
+                tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" class="tags-meta">` + datapoint + '</a><br>';
             });
 
             const contentDiv = document.createElement('div');
@@ -421,7 +537,20 @@
             }
         };
 
+        function doVotes(post_id, score){
+            changeCursor();
+            const queryArgs = [];
+            queryArgs.push(`post_id=${post_id}`);
+            queryArgs.push(`score=${score}`);
+            fetch(generateQueryUrl('/vote', queryArgs))
+            .then(response => response.json())
+            .then(data => {
+                setVoteScore(post_id, data.our_score, data.down, data.up, data.score);
+            });
+        }
+
         function doFavorites(edit_mode, post_id){
+            changeCursor();
             const queryArgs = [];
             var favButton = document.getElementById('fav-button');
 
@@ -434,14 +563,13 @@
                 return response.text();
             })
             .then(text => {
-                console.log (text);
                 if (text === "key_facts") {
                     if(edit_mode === "add"){
-                        console.log("set to green")
                         setFavoriteButton(true, favButton, post_id);
+                        setIsFavorited(post_id, true);
                     }else{
-                        console.log("set to red")
                         setFavoriteButton(false, favButton, post_id);
+                        setIsFavorited(post_id, false);
                     }
                 } 
             })
@@ -451,7 +579,7 @@
         }
 
         function setFavoriteButton(is_favorited, favDiv, post_id){
-            if(is_favorited){
+            if(is_favorited.toString() === "true"){
                 favDiv.style.backgroundColor = "red";
                 favDiv.textContent = "Remove";
                 favDiv.addEventListener('click', () => doFavorites('delete', post_id));
@@ -460,6 +588,72 @@
                 favDiv.textContent = "Add";
                 favDiv.addEventListener('click', () =>  doFavorites('add', post_id));
             }
+        }
+
+        function setVoteScore(post_id, my_vote, down_vote, up_vote, total_vote){
+            const gridContainer = getElementFromPostID(post_id);
+            gridContainer.setAttribute('my_vote', my_vote);
+            gridContainer.setAttribute('down_vote', down_vote);
+            gridContainer.setAttribute('up_vote', up_vote);
+            gridContainer.setAttribute('total_vote', total_vote);
+
+            const upDiv = document.getElementById('up-div');
+            const downDiv = document.getElementById('down-div');
+            const scoreDiv = document.getElementById('score-div');
+
+            upDiv.innerHTML = up_vote;
+            downDiv.innerHTML = down_vote;
+            scoreDiv.innerHTML = total_vote;
+
+            upDiv.style.backgroundColor = "var(--color-section-lighten-10)";
+            downDiv.style.backgroundColor = "var(--color-section-lighten-10)";
+
+            if(my_vote.toString() === "1"){
+                upDiv.style.backgroundColor = "var(--color-success)";
+            }
+            if(my_vote.toString() === "-1"){
+                downDiv.style.backgroundColor = "var(--color-success)";
+            }
+
+        }
+        
+        function getVoteScore(post_id){
+            const gridContainer = getElementFromPostID(post_id);
+            my_vote = gridContainer.getAttribute('my_vote');
+            return my_vote;
+        }
+        
+        function setIsFavorited(post_id, the_new_bool){
+            var divElement = getElementFromPostID(post_id);
+            if(the_new_bool.toString() === "true"){
+                divElement.style.backgroundColor = 'white';
+                divElement.setAttribute('is_favorited', "true");
+            }else{
+                divElement.style.backgroundColor = "";
+                divElement.setAttribute('is_favorited', "false");
+            }
+        }
+        
+        function getIsFavorited(post_id){
+            const gridContainer = getElementFromPostID(post_id);
+            the_bool = gridContainer.getAttribute('is_favorited');
+            return the_bool;
+        }
+
+        function getElementFromPostID(post_id){
+            var divElements = document.querySelectorAll('[post_id]');
+            for (var i = 0; i < divElements.length; i++) {
+                if (divElements[i].getAttribute('post_id') === post_id.toString()) {
+                    return divElements[i];
+                }
+            }
+        }
+
+        function changeCursor() {
+            document.body.style.cursor = 'progress'; // Change cursor to pointer
+            setTimeout(function() {
+                document.body.style.cursor = 'default'; // Change cursor back to default after 1 second
+            }, 1000);
         }
 
         fetchPosts();

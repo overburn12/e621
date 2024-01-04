@@ -16,6 +16,18 @@ class ViewedList(db.Model):
     is_viewed = db.Column(db.Boolean)
     my_vote = db.Column(db.Integer)
     created_at = db.Column(db.String(50))
+    tags = db.relationship('Tag', secondary='image_tag', back_populates='images')
+
+class Tag(db.Model):
+    tag_id = db.Column(db.Integer, primary_key=True)
+    tag_name = db.Column(db.String, nullable=False)
+    tag_type = db.Column(db.String, nullable=False)  
+    images = db.relationship('ViewedList', secondary='image_tag', back_populates='tags')
+
+image_tag = db.Table('image_tag',
+    db.Column('image_id', db.String, db.ForeignKey('viewed_list.image_id'), primary_key=True),
+    db.Column('tag_id', db.Integer, db.ForeignKey('tag.tag_id'), primary_key=True)
+)
 
 #-----------------------------------------------------------------------
 
@@ -43,7 +55,10 @@ def get_api_response(method, endpoint, args_list):
         get_api_response.last_request_time = 0
     current_time = time.time()
     time_since_last_request = current_time - get_api_response.last_request_time
+
     if time_since_last_request < 1:
+        wait_time = int((1 - time_since_last_request) * 1000)
+        print(f"Rate limit exceeded. Waiting {wait_time} ms.")
         time.sleep(1 - time_since_last_request)
 
     #generate the request url with query arguments
@@ -79,48 +94,81 @@ def filter_results(response_json):
     for post in response_json['posts']:
         post_id = post['id']
         is_favorited = post['is_favorited']
-        my_vote = 0 
         created_at = post['created_at']
+        tags = post['tags']
+        my_vote = 0 
+        is_hidden = False
 
-        if not check_entry_exists(post_id):
-            create_entry(post_id, created_at, is_favorited)
+        viewed_image = db.session.get(ViewedList, post_id)
+        if not viewed_image:
+            viewed_image = ViewedList(image_id=post_id, created_at=created_at, is_favorited=is_favorited, is_viewed=False, my_vote=0)
+            db.session.add(viewed_image)
         else:
-            my_vote = get_my_vote(post_id)
+            ##if no post.score.my_vote is present, then the front end assumes this has never been seen before.
+            my_vote = viewed_image.my_vote
+            is_hidden = viewed_image.is_viewed
             post['score']['my_vote'] = my_vote
+            post['is_hidden'] = is_hidden
 
-def create_entry(image_id, created_at, is_favorited=False, is_viewed=False, my_vote=0):
-    new_entry = ViewedList(
-        image_id=image_id,
-        is_favorited=is_favorited,
-        is_viewed=is_viewed,
-        my_vote=my_vote,
-        created_at=created_at
-    )
-    db.session.add(new_entry)
+        process_tags(tags, viewed_image)
+    
     db.session.commit()
-        
-def check_entry_exists(image_id):
-    entry = db.session.query(ViewedList).filter_by(image_id=image_id).first()
-    return entry is not None
-    
-def get_entry_values(image_id):
-    entry = db.session.query(ViewedList).filter_by(image_id=image_id).first()
-    if entry:
-        return entry.is_favorited, entry.is_viewed, entry.my_vote
-    else:
-        return False, False, 0
-    
-def get_my_vote(image_id):
-    entry = db.session.query(ViewedList).filter_by(image_id=image_id).first()
-    if entry:
-        return entry.my_vote
-    else:
-        return 0
+                
+def process_tags(tags, viewed_image):
+    # Convert the current tags to a set for easier comparison
+    current_tags = set((tag.tag_name, tag.tag_type) for tag in viewed_image.tags)
+
+    # Convert the new tags to a set
+    new_tags = set()
+    for tag_type, tag_list in tags.items():
+        for tag_name in tag_list:
+            new_tags.add((tag_name, tag_type))
+
+    # Tags to add (present in new tags but not in current tags)
+    tags_to_add = new_tags - current_tags
+
+    # Tags to remove (present in current tags but not in new tags)
+    tags_to_remove = current_tags - new_tags
+
+    # Process removals
+    for tag_name, tag_type in tags_to_remove:
+        tag = Tag.query.filter_by(tag_name=tag_name, tag_type=tag_type).first()
+        if tag:
+            viewed_image.tags.remove(tag)
+
+    # Process additions
+    for tag_name, tag_type in tags_to_add:
+        tag = Tag.query.filter_by(tag_name=tag_name, tag_type=tag_type).first()
+        if not tag:
+            tag = Tag(tag_name=tag_name, tag_type=tag_type)
+            db.session.add(tag)
+        viewed_image.tags.append(tag)
 
 def update_vote(image_id, vote_score):
-    entry = db.session.query(ViewedList).filter_by(image_id=image_id).first()
+    try:
+        entry = db.session.query(ViewedList).filter_by(image_id=image_id).first()
+        if entry:
+            entry.my_vote = vote_score
+            db.session.commit()
+            return True
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error updating vote: {e}")
+        return False
+    return False
+
+def get_tags_for_image(image_id):
+    image = db.session.get(ViewedList, image_id)
+    if image:
+        tags = image.tags
+        return [(tag.tag_name, tag.tag_type) for tag in tags]
+    else:
+        return "No image found with this ID."
+
+def set_hidden(post_id, is_hidden):
+    entry = ViewedList.query.get(post_id)
     if entry:
-        entry.my_vote = vote_score
+        entry.is_viewed = is_hidden
         db.session.commit()
         return True
     else:
@@ -218,9 +266,26 @@ def vote_route():
         error_message = f'Error: Received status code {response.status_code}'
         print(error_message)
         return jsonify({'error': error_message}), response.status_code
+    
+@app.route('/hide')
+def set_hidden_route():
+    post_id = request.args.get('post_id')
+    is_hidden = request.args.get('is_hidden', type=bool)
+
+    if post_id is None or is_hidden is None:
+        return jsonify({"error": "Missing post_id or is_hidden parameter"}), 400
+
+    success = set_hidden(post_id, is_hidden)
+    return jsonify({"success": success})
 
 @app.route('/comment')
 def comment_route():
+    # Usage example
+    image_id = 4512947
+    tags = get_tags_for_image(image_id)
+    print(tags)
+    return "okay!"
+
     # http://e621.net/comment/index.json?post_id=4510105
     post_id = 4510105
     args_list = [f'post_id={post_id}']
@@ -244,6 +309,8 @@ def favicon():
     return send_file('favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 #-----------------------------------------------------------------------
+
+
 
 if __name__ == '__main__':
     with app.app_context():

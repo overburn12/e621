@@ -110,10 +110,8 @@ def filter_results(response_json):
         is_favorited = post['is_favorited']
         created_at = post['created_at']
         tags = post['tags']
-
         my_vote = 0 
         is_hidden = False
-
         viewed_image = db.session.get(ViewedList, post_id)
         if not viewed_image:
             viewed_image = ViewedList(image_id=post_id, created_at=created_at, is_favorited=is_favorited, is_viewed=False, my_vote=0)
@@ -122,51 +120,56 @@ def filter_results(response_json):
             ##if no post.score.my_vote is present, then the front end assumes this has never been seen before.
             my_vote = viewed_image.my_vote
             is_hidden = viewed_image.is_viewed
-
             #inject some db data fields for the front end
             post['score']['my_vote'] = my_vote
             post['is_hidden'] = is_hidden
-
-        rating = post['rating']
-        file_type = post['file']['ext']
-        fav_count = post['fav_count']
-        up_votes = post['score']['up']
-        down_votes = post['score']['up']
-        total_score = post['score']['total']
-        comment_count = post['comment_count']
-
-        add_community_stats_entry(image_id=post_id, 
-                                  rating=rating, 
-                                  file_type=file_type, 
-                                  fav_count=fav_count, 
-                                  up_votes=up_votes, 
-                                  down_votes=down_votes, 
-                                  total_score=total_score,
-                                  comment_count=comment_count)
-
+        image_stats = CommunityStats(
+            image_id=post_id, 
+            rating=post['rating'], 
+            type=post['file']['ext'],
+            fav_count=post['fav_count'], 
+            up_votes=post['score']['up'], 
+            down_votes=post['score']['up'], 
+            total_score=post['score']['total'],
+            comment_count=post['comment_count']
+        )
+        process_stats(image_stats)
         process_tags(tags, viewed_image)
-    
     db.session.commit()
-                
+
+def process_stats(image_stats):
+    existing_entry = CommunityStats.query.get(image_stats.image_id)
+    if existing_entry:
+        existing_entry.rating = image_stats.rating
+        existing_entry.type = image_stats.type
+        existing_entry.fav_count = image_stats.fav_count
+        existing_entry.up_votes = image_stats.up_votes
+        existing_entry.down_votes = image_stats.down_votes
+        existing_entry.total_score = image_stats.total_score
+        existing_entry.comment_count = image_stats.comment_count
+    else:
+        db.session.add(image_stats)
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"process_stats: Error: {e}")
+          
 def process_tags(tags, viewed_image):
     # Convert the current tags to a set for easier comparison
     current_tags = set((tag.tag_name, tag.tag_type) for tag in viewed_image.tags)
-
     # Convert the new tags to a set
     new_tags = set()
     for tag_type, tag_list in tags.items():
         for tag_name in tag_list:
             new_tags.add((tag_name, tag_type))
-
     tags_to_add = new_tags - current_tags
     tags_to_remove = current_tags - new_tags
-
     # Process removals
     for tag_name, tag_type in tags_to_remove:
         tag = Tag.query.filter_by(tag_name=tag_name, tag_type=tag_type).first()
         if tag:
             viewed_image.tags.remove(tag)
-
     # Process additions
     for tag_name, tag_type in tags_to_add:
         tag = Tag.query.filter_by(tag_name=tag_name, tag_type=tag_type).first()
@@ -174,48 +177,30 @@ def process_tags(tags, viewed_image):
             tag = Tag(tag_name=tag_name, tag_type=tag_type)
             db.session.add(tag)
         viewed_image.tags.append(tag)
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"proccess_tags: Error: {e}")
 
-def update_vote(image_id, vote_score):
+def set_vote(image_id, vote_score):
     try:
         entry = db.session.query(ViewedList).filter_by(image_id=image_id).first()
         if entry:
             entry.my_vote = vote_score
             db.session.commit()
-            return True
     except Exception as e:
         db.session.rollback()
-        print(f"Error updating vote: {e}")
-        return False
-    return False
+        print(f"set_vote: Error: {e}")
 
-def set_hidden(post_id, is_hidden):
-    entry = ViewedList.query.get(post_id)
+def set_hidden(image_id, is_hidden):
+    entry = db.session.query(ViewedList).filter_by(image_id=image_id).first()
     if entry:
         entry.is_viewed = is_hidden
         db.session.commit()
         return True
     else:
         return False
-
-def add_community_stats_entry(image_id, rating, file_type, fav_count, up_votes, down_votes, total_score, comment_count):
-    # Check if an entry with the same image_id already exists
-    existing_entry = CommunityStats.query.get(image_id)
-    if existing_entry:
-        return f"Entry with image_id {image_id} already exists."
-
-    # Create a new entry
-    new_entry = CommunityStats(image_id=image_id, rating=rating, type=file_type,
-                               fav_count=fav_count, up_votes=up_votes, 
-                               down_votes=down_votes, total_score=total_score,
-                               comment_count=comment_count)
-
-    db.session.add(new_entry)
-    try:
-        db.session.commit()
-        return f"Entry with image_id {image_id} added successfully."
-    except Exception as e:
-        db.session.rollback()
-        return f"Error adding entry: {e}"
     
 def get_community_stats_entry(image_id):
     entry = CommunityStats.query.get(image_id)
@@ -306,7 +291,7 @@ def vote_route():
         required_keys = ['up', 'down', 'score', 'our_score']
         if all(key in response_json for key in required_keys):
             our_score = response_json['our_score']
-            update_vote(post_id, our_score)
+            set_vote(post_id, our_score)
             return jsonify(response_json)
         else:
             return jsonify({'error': 'Response JSON is missing one or more required keys'}), 500
@@ -363,7 +348,6 @@ def sql_page():
 def execute_query():
     query_data = request.get_json()
     query = text(query_data['query'])
-    print (query)
 
     try:
         with db.engine.connect() as connection:
@@ -380,7 +364,6 @@ def execute_query():
         # Rolling back in case of error
         db.session.rollback()
         result = {'error': str(e)}
-        print(result)
 
     return jsonify(result)
 

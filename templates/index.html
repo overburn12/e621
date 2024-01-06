@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Image Gallery</title>
     <style>
         body{
@@ -154,15 +155,10 @@
 
             display: flex;
             flex-direction: row;
-        }
-        #search-box{
-            width: 80%;
+        }        .search-bar{
             background-color: var(--color-foreground);
             border-radius: 10px;
             padding: 10px;
-        }
-        #searchText{
-            width: calc(100% - 15px);
         }
 
         a{
@@ -180,13 +176,40 @@
         .tags-general{
             color: var(--color-tag-general); 
         }
+
+
+        @media screen and (max-width: 600px) {
+            #modal-content {
+                width: 90%; /* Adjust width for smaller screens */
+                padding: 10px; /* Reduce padding */
+                margin-top: 10%; /* Adjust margin to center the modal vertically */
+                margin-bottom: 10%;
+                flex-direction: column; /* Stack content vertically */
+            }
+            .tag-container{
+                display: none;
+            }
+
+            #modal-content img, #modal-content video {
+                width: 100%; /* Make media within modal responsive */
+                height: auto;
+            }
+        }
+            
     </style>
 </head>
 <body>
-    <div id="search-box">
-        <input type="text" id="searchText" placeholder="Search..." onkeydown="if(event.keyCode === 13) search(this.value)">
+    <div style="display: flex; flex-direction: row; width:100%;">
+        <div class="search-bar" style="margin-right: 10px;">
+            <a href="/artists" style="color: var(--colors-tags-artist);">Artists</a>
+        </div>
+        <div class="search-bar" style="width: 90%;">
+            <input type="text" id="searchText" style="width: calc(100% - 15px);" placeholder="Search..." onkeydown="if(event.keyCode === 13) search(this.value)">
+        </div>
+        <div class="search-bar" style="margin-left: 10px;">
+            <a href="/sql" style="color: var(--colors-tags-artist);">SQL</a>
+        </div>
     </div>
-
     <br>
     
     <div style="width: 100%;">
@@ -207,6 +230,7 @@
         let gridCount = 0;
         let modalViewMode = false;
         let curModalGridNum = 0;
+        let keyStates = {};
 
         {% if tags %}
             searchTags = "{{ tags }}";
@@ -215,6 +239,10 @@
         {% endif %}
 
         document.getElementById('searchText').value = searchTags;
+
+        /*---------------------------------------------------------------------------------------------*/
+        // url functions
+        /*---------------------------------------------------------------------------------------------*/
 
         function generateQueryUrl(endpoint, query_args) {
             let url = endpoint;
@@ -238,6 +266,10 @@
                 return encodedURL;
             }
             return url;
+        }
+
+        function search(searchText) {
+            window.location.href = `/search?tags=${searchText}`;
         }
 
         function convertDateFormat(inputDate) {
@@ -287,9 +319,46 @@
             return result.trim() + ' ago';
         }
 
+        /*---------------------------------------------------------------------------------------------*/
+        // grid functions
+        /*---------------------------------------------------------------------------------------------*/
+
+        function addPageBreaktoGrid(page_num){
+            //the conatiner for the grid
+            const bufferContainer = document.createElement('div');
+            const gridContainer = document.createElement('div');
+            bufferContainer.classList.add('buffer-container');
+            gridContainer.classList.add('grid-container');
+            
+            if(page_num<=0){
+                //end of page
+                gridContainer.innerHTML = "The End<br>";
+                gridContainer.innerHTML += "Image Count: " + gridCount;
+            }else{
+                //paginate
+                gridContainer.innerHTML = "Page: "+ page_num + "<br>";
+                gridContainer.innerHTML += "Image Count: " + gridCount;    
+            }
+
+            bufferContainer.append(gridContainer);
+            grid.append(bufferContainer);
+        }
+
+        function removeGridItem(post_id){
+            const gridContainer = getElementFromPostID(post_id);
+            const queryArgs = [];
+            queryArgs.push(`post_id=${post_id}`);
+            queryArgs.push(`is_hidden=${true}`);
+            fetch(generateQueryUrl('/hide', queryArgs))
+            .then(response => response.json())
+            .then(data => {
+                gridContainer.style.display = "none";
+                gridContainer.setAttribute('is_hidden', 'true');
+            });
+        }
+
         function addImageToGrid(post){
             if(post.is_hidden){
-                //skip this one if its hidden
                 return;
             }
 
@@ -306,8 +375,22 @@
 
             imgElement.onclick = function(event) {
                 if(event.ctrlKey){
-                    removeModal(post.id);
-                }else{
+                    removeGridItem(post.id);
+                    return;
+                }
+
+                let showIt = true;
+                
+                if(isKey(70)){ //'f'
+                    doFavorites('add', post.id);
+                    showIt = false;
+                }
+                if(isKey(71)){ //'g'
+                    doVotes(post.id, 1);
+                    showIt = false;
+                }
+                
+                if (showIt){
                     showModal(post);
                 }
             };
@@ -325,19 +408,25 @@
             textDiv.style.padding = "5px";
             textDiv.classList.add('caption-box');
 
+            textDiv.innerHTML = convertDateFormat(post.created_at) + "<br>";
+
             if(my_vote < 0)
-                textDiv.innerHTML = '👎<br>';
+                textDiv.innerHTML += '👎<br>';
             if(my_vote > 0)
-                textDiv.innerHTML = '👍<br>';
+                textDiv.innerHTML += '👍<br>';
             
             //textDiv.innerHTML += `<div style="display: flex; flex-direction: row; justify-content: space-between;">`;
-            textDiv.innerHTML += `🏆<p id="score_${post.id}">` + post.score.total + '</p> ';
-            textDiv.innerHTML += `💕<p id="fav_${post.id}">` + post.fav_count + '</p> ';
-            textDiv.innerHTML += '📖' + post.comment_count;
+            textDiv.innerHTML += `🏆` + post.score.total + ' ';
+            textDiv.innerHTML += `💕` + post.fav_count + ' ';
+            textDiv.innerHTML += '📖' + post.comment_count + '<br>';
             //textDiv.innerHTML += '</div>';
 
             post.tags.artist.forEach(artistName => {
-                textDiv.innerHTML += `<br><a href="/search?tags=${artistName}" class="tags-artist">` + artistName + '</a>';
+                if(isArtistFavorited(artistName)){
+                    textDiv.innerHTML += `<a href="/search?tags=${artistName}" class="tags-artist">⭐` + artistName + '</a>';
+                }else{
+                    textDiv.innerHTML += `<a href="/search?tags=${artistName}" class="tags-artist">` + artistName + '</a>';
+                }
             });
 
             //select the color of the grid panel
@@ -367,6 +456,10 @@
             gridCount++;
         }
 
+        /*---------------------------------------------------------------------------------------------*/
+        // API fetch
+        /*---------------------------------------------------------------------------------------------*/
+
         function fetchPosts() {
             if (isLoading) return;
             changeCursor();
@@ -383,219 +476,20 @@
                 //stop paginating if theres no more data to return
                 if (data.posts.length === 0) {
                     inSearch = false; 
-                    return;
+                    addPageBreaktoGrid(-1);
+                }else{
+                    data.posts.forEach(post => {
+                        addImageToGrid(post);
+                    });
+                    addPageBreaktoGrid(curPage + 1);
                 }
-                data.posts.forEach(post => {
-                    addImageToGrid(post);
-                });
+                
             })
             .catch(error => {
                 console.error('Error fetching images:', error);
                 isLoading = false;
                 inSearch = false;
             });
-        }
-
-        function search(searchText) {
-            window.location.href = `/search?tags=${searchText}`;
-        }
-
-        searchText.addEventListener('input', function() {
-            inSearch = false;
-        });
-
-        window.onscroll = function() {
-            if (!inSearch) return;
-            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500 && !isLoading) {
-                curPage = curPage + 1;
-                fetchPosts();
-            }
-        };
-
-        window.addEventListener('keydown', function(event) {
-            let newGridNum = null;
-            let tempGrid;
-
-            if(!modalViewMode)
-                return;
-
-            console.log(`curModalGridNum=${curModalGridNum}, gridCount=${gridCount}, event=${event.keyCode}`);
-            
-            //left key, go down in numbers
-            if (event.keyCode === 37) {
-                for(i=curModalGridNum-1; i>=0; i--){
-                    tempGrid = getElementFromGridID(i);
-                    if(!tempGrid.hasAttribute('is_hidden')){
-                        newGridNum = i;
-                        break;
-                    }
-                }
-            }
-
-            // right, go up in numbers
-            if (event.keyCode === 39) {
-                console.log(`right keypress`);
-                for(i=curModalGridNum+1; i<= gridCount; i++){
-                    tempGrid = getElementFromGridID(i);
-                    console.log(`i=${i}, is_hidden=${tempGrid.hasAttribute('is_hidden')}`);
-                    if(!tempGrid.hasAttribute('is_hidden')){
-                        newGridNum = i;
-                        console.log(`found at: ${i}`);
-                        break;
-                    }
-                }
-            }
-
-            if(newGridNum != null){
-                curModalGridNum = newGridNum;
-                const tempContainer = getElementFromGridID(curModalGridNum);
-                const imgElement = tempContainer.querySelector('img');
-                resetModal();
-                imgElement.dispatchEvent(new Event('click'));
-            }            
-        });
-
-        function removeModal(post_id){
-            const gridContainer = getElementFromPostID(post_id);
-            const queryArgs = [];
-            queryArgs.push(`post_id=${post_id}`);
-            queryArgs.push(`is_hidden=${true}`);
-            fetch(generateQueryUrl('/hide', queryArgs))
-            .then(response => response.json())
-            .then(data => {
-                gridContainer.style.display = "none";
-                gridContainer.setAttribute('is_hidden', 'true');
-            });
-        }
-
-        function showModal(post) {
-            const mediaUrl = post.file.url;
-            const fileType = post.file.ext; 
-            const modalContent = document.getElementById('modal-content');
-            modalContent.innerHTML = ''; 
-            modalViewMode = true;
-
-            //Img/media element
-            let mediaElement;
-            if (fileType === 'webm') {
-                mediaElement = document.createElement('video');
-                mediaElement.src = mediaUrl;
-                mediaElement.controls = true;
-                mediaElement.style.width = '100%';
-                mediaElement.autoplay = true;
-            } else {
-                mediaElement = document.createElement('img');
-                mediaElement.src = mediaUrl;
-                mediaElement.style.width = '100%';
-            }
-
-            //Favorite & up-down vote button bar
-            const favDiv = document.createElement('div');
-            const spacerDiv = document.createElement('div');
-            const upDiv = document.createElement('div');
-            const downDiv = document.createElement('div');
-            const scoreDiv = document.createElement('div');
-            const favDivContainer = document.createElement('div');
-
-            upDiv.addEventListener('click', function() {
-                doVotes(post.id, 1);
-              });
-              
-            downDiv.addEventListener('click', function() {
-                doVotes(post.id, -1);
-            });
-
-            favDiv.id = 'fav-button';
-            upDiv.id = 'up-div';
-            downDiv.id = 'down-div';
-            scoreDiv.id = 'score-div';
-
-            const containerDiv = getElementFromPostID(post.id);
-            upDiv.innerText = containerDiv.getAttribute('up_vote');
-            downDiv.innerText = containerDiv.getAttribute('down_vote');
-            scoreDiv.innerText = containerDiv.getAttribute('total_vote');
-            curModalGridNum = +containerDiv.getAttribute('grid_num'); //add a + to make it an int
-
-            favDiv.classList.add('button-div');
-            upDiv.classList.add('button-div');
-            downDiv.classList.add('button-div');
-            scoreDiv.classList.add('button-div');
-            spacerDiv.classList.add('button-div');
-            scoreDiv.style.backgroundColor = "transparent";
-            spacerDiv.style.backgroundColor = "transparent";
-
-            const my_vote_score = containerDiv.getAttribute('my_vote');
-            
-            if(my_vote_score.toString() === "1"){
-                upDiv.style.backgroundColor = "var(--color-success)";
-            }
-            if(my_vote_score.toString() === "-1"){
-                downDiv.style.backgroundColor = "var(--color-success)";
-            }
-
-            //assemble the fav button bar
-            favDivContainer.style = "display: flex; justify-content: space-between; align-items: center;";
-            setFavoriteButton(getIsFavorited(post.id), favDiv, post.id);
-            favDivContainer.appendChild(favDiv);
-            favDivContainer.appendChild(spacerDiv);
-            favDivContainer.appendChild(upDiv);
-            favDivContainer.appendChild(scoreDiv);
-            favDivContainer.appendChild(downDiv);
-
-            //text display area with specs
-            const textDiv = document.createElement('div');
-            textDiv.style.paddingTop = '10px'; 
-            textDiv.style.paddingBottom = '10px'; 
-            date_time = convertDateFormat(post.created_at);
-            textDiv.innerHTML += 'date: ' + date_time + ' (' + timeAgo(date_time) + ')<br>';
-            textDiv.innerHTML += 'id: ' + post.id + '<br>';
-            textDiv.innerHTML += 'rating: ' + post.rating + '<br>';
-            textDiv.innerHTML += 'fav count: ' + post.fav_count + '<br>';
-            textDiv.innerHTML += 'comments: ' + post.comment_count + '<br>';
-
-            textDiv.innerHTML += 'pools: ';
-            post.pools.forEach(datapoint => {textDiv.innerHTML += ' ' + datapoint;});
-
-            textDiv.innerHTML += `<br><a href="https://e621.net/posts/${post.id}" class="tags-artist" target="_blank">Show on e621.net</a><br>`
-
-            textDiv.innerHTML += '<b>Description:</b> ' + post.description + '<br>';
-
-            //Tags list
-            const tagsDiv = document.createElement('div');
-            tagsDiv.classList.add('tag-container');
-            tagsDiv.innerHTML = '';
-
-            Object.keys(post.tags).forEach(categoryKey => {
-                let categoryName = categoryKey.charAt(0).toUpperCase() + categoryKey.slice(1); // Capitalize the first letter
-                tagsDiv.innerHTML += `<br><b>${categoryName}</b><br>`;
-                post.tags[categoryKey].forEach(datapoint => {
-                    tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" class="tags-${categoryKey}">${datapoint}</a><br>`;
-                });
-            });
-            
-            //assemble the modal structure
-            const contentDiv = document.createElement('div');
-            contentDiv.id = 'content-divider';
-            contentDiv.appendChild(mediaElement);
-            contentDiv.appendChild(favDivContainer);
-            contentDiv.appendChild(textDiv);
-
-            modalContent.appendChild(tagsDiv);
-            modalContent.appendChild(contentDiv);
-
-            document.getElementById('modal').style.display = 'block';
-        }
-
-        window.onclick = function(event) {
-            if (event.target == document.getElementById('modal')) {
-                modalViewMode = false;
-                resetModal();
-            }
-        };
-        
-        function resetModal(){
-            document.getElementById('modal-content').innerHTML = '';
-            document.getElementById('modal').style.display = "none";
         }
 
         function doVotes(post_id, score){
@@ -638,6 +532,160 @@
                 console.error('There was a problem with the fetch operation:', error);
             });
         }
+
+        /*---------------------------------------------------------------------------------------------*/
+        // modal functions
+        /*---------------------------------------------------------------------------------------------*/
+
+        function showModal(post) {
+            const mediaUrl = post.file.url;
+            const fileType = post.file.ext; 
+            const modalContent = document.getElementById('modal-content');
+            modalContent.innerHTML = ''; 
+            modalViewMode = true;
+
+            //Img/media element
+            let mediaElement;
+            if (fileType === 'webm') {
+                mediaElement = document.createElement('video');
+                mediaElement.src = mediaUrl;
+                mediaElement.controls = true;
+                mediaElement.style.width = '100%';
+                if (window.innerWidth <= 600) {  // Example breakpoint for mobile devices
+                    mediaElement.autoplay = false;
+                    mediaElement.muted = true;
+                } else {
+                    mediaElement.autoplay = true;
+                }
+            } else {
+                mediaElement = document.createElement('img');
+                mediaElement.src = mediaUrl;
+                mediaElement.style.width = '100%';
+            }
+
+            //Favorite & up-down vote button bar
+            const favDiv = document.createElement('div');
+            const spacerDiv = document.createElement('div');
+            const upDiv = document.createElement('div');
+            const downDiv = document.createElement('div');
+            const scoreDiv = document.createElement('div');
+            const favDivContainer = document.createElement('div');
+
+            upDiv.addEventListener('click', function() {
+                doVotes(post.id, 1);
+              });
+              
+            downDiv.addEventListener('click', function() {
+                doVotes(post.id, -1);
+            });
+
+            spacerDiv.addEventListener('click', function(){
+                doVotes(post.id, 1);
+                doFavorites('add',post.id);
+            });
+
+            favDiv.id = 'fav-button';
+            upDiv.id = 'up-div';
+            downDiv.id = 'down-div';
+            scoreDiv.id = 'score-div';
+
+            const containerDiv = getElementFromPostID(post.id);
+            upDiv.innerText = containerDiv.getAttribute('up_vote');
+            downDiv.innerText = containerDiv.getAttribute('down_vote');
+            scoreDiv.innerText = containerDiv.getAttribute('total_vote');
+            spacerDiv.innerHTML = `💕`;
+            curModalGridNum = +containerDiv.getAttribute('grid_num'); //add a + to make it an int
+
+            favDiv.classList.add('button-div');
+            upDiv.classList.add('button-div');
+            downDiv.classList.add('button-div');
+            scoreDiv.classList.add('button-div');
+            spacerDiv.classList.add('button-div');
+            scoreDiv.style.backgroundColor = "transparent";
+            //spacerDiv.style.backgroundColor = "transparent";
+
+            const my_vote_score = containerDiv.getAttribute('my_vote');
+            const is_favorited = getIsFavorited(post.id);
+
+            if(my_vote_score.toString() === "1"){
+                upDiv.style.backgroundColor = "var(--color-success)";
+                if(is_favorited==="true"){
+                    spacerDiv.style.backgroundColor = "var(--color-success)";
+                }
+            }
+            if(my_vote_score.toString() === "-1"){
+                downDiv.style.backgroundColor = "var(--color-success)";
+            }
+
+            //assemble the fav button bar
+            favDivContainer.style = "display: flex; justify-content: space-between; align-items: center;";
+            setFavoriteButton(is_favorited, favDiv, post.id);
+            favDivContainer.appendChild(favDiv);
+            favDivContainer.appendChild(spacerDiv);
+            favDivContainer.appendChild(upDiv);
+            favDivContainer.appendChild(scoreDiv);
+            favDivContainer.appendChild(downDiv);
+
+            //text display area with specs
+            const textDiv = document.createElement('div');
+            textDiv.style.paddingTop = '10px'; 
+            textDiv.style.paddingBottom = '10px'; 
+            date_time = convertDateFormat(post.created_at);
+
+            post.tags.artist.forEach(artistName => {
+                if(!isArtistFavorited(artistName)){
+                    textDiv.innerHTML += `<div class="tags-artist" onclick="addArtist('${artistName}')" id='add_${artistName}'>add ${artistName} to favorites</div><br>`;
+                }
+            });
+
+            textDiv.innerHTML += 'date: ' + date_time + ' (' + timeAgo(date_time) + ')<br>';
+            textDiv.innerHTML += 'id: ' + post.id + '<br>';
+            textDiv.innerHTML += 'rating: ' + post.rating + '<br>';
+            textDiv.innerHTML += 'fav count: ' + post.fav_count + '<br>';
+            textDiv.innerHTML += 'comments: ' + post.comment_count + '<br>';
+
+            textDiv.innerHTML += 'pools: ';
+            post.pools.forEach(datapoint => {textDiv.innerHTML += ' ' + datapoint;});
+
+            textDiv.innerHTML += `<br><a href="https://e621.net/posts/${post.id}" class="tags-artist" target="_blank">Show on e621.net</a><br><br>`
+
+            textDiv.innerHTML += '<b>Description:</b> ' + post.description + '<br>';
+
+            //Tags list
+            const tagsDiv = document.createElement('div');
+            tagsDiv.classList.add('tag-container');
+            tagsDiv.innerHTML = '';
+
+            Object.keys(post.tags).forEach(categoryKey => {
+                let categoryName = categoryKey.charAt(0).toUpperCase() + categoryKey.slice(1); // Capitalize the first letter
+                tagsDiv.innerHTML += `<br><b>${categoryName}</b><br>`;
+                post.tags[categoryKey].forEach(datapoint => {
+                    tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" style="color: var(--color-tag-${categoryKey});">${datapoint}</a><br>`;
+                });  //--color-tag-artist
+            });
+            
+            //assemble the modal structure
+            const contentDiv = document.createElement('div');
+            contentDiv.id = 'content-divider';
+            contentDiv.appendChild(mediaElement);
+            contentDiv.appendChild(favDivContainer);
+            contentDiv.appendChild(textDiv);
+
+            modalContent.appendChild(tagsDiv);
+            modalContent.appendChild(contentDiv);
+
+            document.getElementById('modal').style.display = 'block';
+        }
+        
+        function closeModal(){
+            modalViewMode = false;
+            document.getElementById('modal-content').innerHTML = '';
+            document.getElementById('modal').style.display = "none";
+        }
+
+        /*---------------------------------------------------------------------------------------------*/
+        // data functions
+        /*---------------------------------------------------------------------------------------------*/
 
         function setFavoriteButton(is_favorited, favDiv, post_id){
             if(is_favorited.toString() === "true"){
@@ -721,8 +769,94 @@
             }, 1000);
         }
 
+        function isKey(keyCode) {
+            let theKeyState = keyStates.hasOwnProperty(keyCode) ? keyStates[keyCode] : false;
+            console.log(`keystate ${keyCode}: = ${theKeyState}`);
+            return theKeyState;
+        }
+
+        /*---------------------------------------------------------------------------------------------*/
+        // event Listeners
+        /*---------------------------------------------------------------------------------------------*/
+
+        window.addEventListener('keydown', function(event) {
+            let newGridNum = null;
+            let tempGrid;
+
+            if(!modalViewMode)
+                return;
+            
+            //left key, go down in numbers
+            if (event.keyCode === 37) {
+                for(i=curModalGridNum-1; i>=0; i--){
+                    tempGrid = getElementFromGridID(i);
+                    if(!tempGrid.hasAttribute('is_hidden')){
+                        newGridNum = i;
+                        break;
+                    }
+                }
+            }
+
+            // right, go up in numbers
+            if (event.keyCode === 39) {
+                for(i=curModalGridNum+1; i<= gridCount; i++){
+                    tempGrid = getElementFromGridID(i);
+                    if(!tempGrid.hasAttribute('is_hidden')){
+                        newGridNum = i;
+                        break;
+                    }
+                }
+            }
+
+            if(event.keyCode === 65){
+                closeModal();
+            }
+
+            if(newGridNum != null){
+                curModalGridNum = newGridNum;
+                const tempContainer = getElementFromGridID(curModalGridNum);
+                const imgElement = tempContainer.querySelector('img');
+                closeModal();
+                imgElement.dispatchEvent(new Event('click'));
+            }            
+        });
+
+        document.addEventListener('keydown', (event) => {
+            // Update the state only if the key was not already pressed
+            if (!keyStates[event.key]) {
+                keyStates[event.key] = true;
+            }
+        });
+        
+        document.addEventListener('keyup', (event) => {
+            // Update the state only if the key was previously pressed
+            if (keyStates[event.key]) {
+                keyStates[event.key] = false;
+            }
+        });
+        
+
+        window.onclick = function(event) {
+            if (event.target == document.getElementById('modal')) {
+                closeModal();
+            }
+        };
+
+        searchText.addEventListener('input', function() {
+            inSearch = false;
+        });
+
+        window.onscroll = function() {
+            if (!inSearch) return;
+            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500 && !isLoading) {
+                curPage = curPage + 1;
+                fetchPosts();
+            }
+        };
+
         fetchPosts();
     </script>
+    <script src="static/artists.js"></script>
     
     
 </body>

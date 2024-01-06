@@ -4,6 +4,7 @@ import requests, json, os
 import base64
 import time
 from dotenv import load_dotenv
+from sqlalchemy.sql import text
 
 load_dotenv()
 app = Flask(__name__)
@@ -11,12 +12,13 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///e621.db'
 db = SQLAlchemy(app)
 
 class ViewedList(db.Model):
-    image_id = db.Column(db.String, primary_key=True)
+    image_id = db.Column(db.Integer, primary_key=True)
     is_favorited = db.Column(db.Boolean)
     is_viewed = db.Column(db.Boolean)
     my_vote = db.Column(db.Integer)
     created_at = db.Column(db.String(50))
     tags = db.relationship('Tag', secondary='image_tag', back_populates='images')
+    community_stats = db.relationship('CommunityStats', uselist=False, back_populates='viewed_image')
 
 class Tag(db.Model):
     tag_id = db.Column(db.Integer, primary_key=True)
@@ -24,8 +26,19 @@ class Tag(db.Model):
     tag_type = db.Column(db.String, nullable=False)  
     images = db.relationship('ViewedList', secondary='image_tag', back_populates='tags')
 
+class CommunityStats(db.Model):
+    image_id = db.Column(db.Integer, db.ForeignKey('viewed_list.image_id'), primary_key=True)
+    rating = db.Column(db.String(1), nullable=False)
+    type = db.Column(db.String(10), nullable=False)
+    fav_count = db.Column(db.Integer, nullable=False)
+    up_votes = db.Column(db.Integer, nullable=False)
+    down_votes = db.Column(db.Integer, nullable=False)
+    total_score = db.Column(db.Integer, nullable=False)
+    comment_count = db.Column(db.Integer, nullable=False)
+    viewed_image = db.relationship('ViewedList', back_populates='community_stats')
+
 image_tag = db.Table('image_tag',
-    db.Column('image_id', db.String, db.ForeignKey('viewed_list.image_id'), primary_key=True),
+    db.Column('image_id', db.Integer, db.ForeignKey('viewed_list.image_id'), primary_key=True),
     db.Column('tag_id', db.Integer, db.ForeignKey('tag.tag_id'), primary_key=True)
 )
 
@@ -56,6 +69,7 @@ def get_api_response(method, endpoint, args_list):
     current_time = time.time()
     time_since_last_request = current_time - get_api_response.last_request_time
 
+    #wait if it has been less than 1 second since the last request
     if time_since_last_request < 1:
         wait_time = int((1 - time_since_last_request) * 1000)
         print(f"Rate limit exceeded. Waiting {wait_time} ms.")
@@ -96,6 +110,7 @@ def filter_results(response_json):
         is_favorited = post['is_favorited']
         created_at = post['created_at']
         tags = post['tags']
+
         my_vote = 0 
         is_hidden = False
 
@@ -107,8 +122,27 @@ def filter_results(response_json):
             ##if no post.score.my_vote is present, then the front end assumes this has never been seen before.
             my_vote = viewed_image.my_vote
             is_hidden = viewed_image.is_viewed
+
+            #inject some db data fields for the front end
             post['score']['my_vote'] = my_vote
             post['is_hidden'] = is_hidden
+
+        rating = post['rating']
+        file_type = post['file']['ext']
+        fav_count = post['fav_count']
+        up_votes = post['score']['up']
+        down_votes = post['score']['up']
+        total_score = post['score']['total']
+        comment_count = post['comment_count']
+
+        add_community_stats_entry(image_id=post_id, 
+                                  rating=rating, 
+                                  file_type=file_type, 
+                                  fav_count=fav_count, 
+                                  up_votes=up_votes, 
+                                  down_votes=down_votes, 
+                                  total_score=total_score,
+                                  comment_count=comment_count)
 
         process_tags(tags, viewed_image)
     
@@ -124,10 +158,7 @@ def process_tags(tags, viewed_image):
         for tag_name in tag_list:
             new_tags.add((tag_name, tag_type))
 
-    # Tags to add (present in new tags but not in current tags)
     tags_to_add = new_tags - current_tags
-
-    # Tags to remove (present in current tags but not in new tags)
     tags_to_remove = current_tags - new_tags
 
     # Process removals
@@ -157,14 +188,6 @@ def update_vote(image_id, vote_score):
         return False
     return False
 
-def get_tags_for_image(image_id):
-    image = db.session.get(ViewedList, image_id)
-    if image:
-        tags = image.tags
-        return [(tag.tag_name, tag.tag_type) for tag in tags]
-    else:
-        return "No image found with this ID."
-
 def set_hidden(post_id, is_hidden):
     entry = ViewedList.query.get(post_id)
     if entry:
@@ -174,6 +197,33 @@ def set_hidden(post_id, is_hidden):
     else:
         return False
 
+def add_community_stats_entry(image_id, rating, file_type, fav_count, up_votes, down_votes, total_score, comment_count):
+    # Check if an entry with the same image_id already exists
+    existing_entry = CommunityStats.query.get(image_id)
+    if existing_entry:
+        return f"Entry with image_id {image_id} already exists."
+
+    # Create a new entry
+    new_entry = CommunityStats(image_id=image_id, rating=rating, type=file_type,
+                               fav_count=fav_count, up_votes=up_votes, 
+                               down_votes=down_votes, total_score=total_score,
+                               comment_count=comment_count)
+
+    db.session.add(new_entry)
+    try:
+        db.session.commit()
+        return f"Entry with image_id {image_id} added successfully."
+    except Exception as e:
+        db.session.rollback()
+        return f"Error adding entry: {e}"
+    
+def get_community_stats_entry(image_id):
+    entry = CommunityStats.query.get(image_id)
+    if entry:
+        return entry
+    else:
+        return f"No entry found for image_id {image_id}"
+
 #-----------------------------------------------------------------------
 # routes
 #-----------------------------------------------------------------------
@@ -182,16 +232,17 @@ def set_hidden(post_id, is_hidden):
 def main_page():
     return redirect(url_for('search_function'))
 
+@app.route('/artists')
+def artists_page():
+    return render_template("artists.html")
+
 @app.route('/search')
 def search_function():
     tags = request.args.get('tags')
     return render_template('index.html', tags=tags)
 
-@app.route('/list')
+@app.route('/list', methods=['GET'])
 def fetch_recent_posts():
-    if request.method == 'POST':
-        return jsonify({"error": "GET method required for /list"})
-
     args_list = []
     page_num = request.args.get('page')
     search_tags = request.args.get('tags')
@@ -221,26 +272,23 @@ def set_fav():
     post_id = request.args.get('post_id')
     edit_type = request.args.get('type')
 
-    if request.method == 'GET':
-        if not post_id: 
-            return jsonify({"error": "post_id argument missing"})
-        if not edit_type:
-            return jsonify({"error": "type argument missing"})
-        
-        if edit_type == 'add':
-            args_list = [f'post_id={post_id}']
-            response = get_api_response('POST', 'favorites.json', args_list)
+    if not post_id: 
+        return jsonify({"error": "post_id argument missing"})
+    if not edit_type:
+        return jsonify({"error": "type argument missing"})
+    
+    if edit_type == 'add':
+        args_list = [f'post_id={post_id}']
+        response = get_api_response('POST', 'favorites.json', args_list)
+        return "key_facts"
+    elif edit_type == 'delete':
+        response = get_api_response('DELETE', f'favorites/{post_id}.json', [''])
+        if not response.content:
             return "key_facts"
-        elif edit_type == 'delete':
-            response = get_api_response('DELETE', f'favorites/{post_id}.json', [''])
-            if not response.content:
-                return "key_facts"
-            else:
-                return jsonify(response.json())
         else:
-            jsonify({"error": "type argument invalid"})
+            return jsonify(response.json())
     else:
-        return jsonify({"error": "POST method required for favorites.json"})
+        jsonify({"error": "type argument invalid"})
     
 @app.route('/vote')
 def vote_route():
@@ -277,40 +325,66 @@ def set_hidden_route():
 
     success = set_hidden(post_id, is_hidden)
     return jsonify({"success": success})
-
-@app.route('/comment')
-def comment_route():
-    # Usage example
-    image_id = 4512947
-    tags = get_tags_for_image(image_id)
-    print(tags)
-    return "okay!"
-
-    # http://e621.net/comment/index.json?post_id=4510105
-    post_id = 4510105
-    args_list = [f'post_id={post_id}']
-    response = get_api_response('GET', 'comment/index.json', args_list)
-    # Check if the response has a valid status code
-    if response.status_code != 200:
-        return make_response(jsonify({"error": f"API request failed with status code {response.status_code}"}), response.status_code)
-
-    # Try to parse the response as JSON
-    try:
-        response_json = response.json()
-    except ValueError as e:
-        # If parsing fails, return the raw response text and status code
-        return make_response(jsonify({"error": "Response not in JSON format", "response_text": response.text}), response.status_code)
-
-    # If everything is fine, return the JSON response
-    return jsonify(response_json)
     
 @app.route('/favicon.ico')
 def favicon():
     return send_file('favicon.ico', mimetype='image/vnd.microsoft.icon')
 
+ARTIST_FILE = 'data/artists.json'
+
+@app.route('/artists_list', methods=['GET'])
+def get_artists():
+    try:
+        with open(ARTIST_FILE, 'r') as file:
+            artist_list = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        artist_list = []
+    return jsonify(artist_list)
+
+@app.route('/artists_list', methods=['PUT'])
+def update_artists():
+    artist_list = request.get_json()
+    if not isinstance(artist_list, list):
+        return "Invalid data format", 400
+
+    try:
+        with open(ARTIST_FILE, 'w') as file:
+            json.dump(artist_list, file)
+    except IOError:
+        return "Error writing to file", 500
+
+    return "Artist list updated", 200
+
+@app.route('/sql', methods=['GET'])
+def sql_page():
+    return render_template("sql.html")
+
+@app.route('/sql', methods=['POST'])
+def execute_query():
+    query_data = request.get_json()
+    query = text(query_data['query'])
+    print (query)
+
+    try:
+        with db.engine.connect() as connection:
+            result_data = connection.execute(query)
+            rows = result_data.fetchall()
+            columns = list(result_data.keys())
+
+        result = {
+            'columns': columns,
+            'rows': [dict(zip(columns, row)) for row in rows]
+        }
+
+    except Exception as e:
+        # Rolling back in case of error
+        db.session.rollback()
+        result = {'error': str(e)}
+        print(result)
+
+    return jsonify(result)
+
 #-----------------------------------------------------------------------
-
-
 
 if __name__ == '__main__':
     with app.app_context():

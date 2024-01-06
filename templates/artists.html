@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Favorite Artists</title>
+</head>
+<body>
+    <button onclick="displayArtists()">Load Artists</button>
+
+    <h1>My Favorite Artists</h1>
+    <input type="text" id="newArtistName" placeholder="Enter artist's name">
+    <button onclick="addNewArtist()">Add Artist</button>
+    <ul id="artistList"></ul>
+
+    <script src="static/artists.js"></script>
+    <script>
+        // Additional functions for webpage interaction
+        function addNewArtist() {
+            var artistName = document.getElementById('newArtistName').value;
+            if (artistName && !isArtistFavorited(artistName)) {
+                addArtist(artistName);
+                displayArtists();
+                document.getElementById('newArtistName').value = ''; // Reset input field
+            }
+        }
+
+        function removeArtistFromList(artistName) {
+            removeArtist(artistName);
+            displayArtists();
+        }
+
+        function displayArtists() {
+            var list = document.getElementById('artistList');
+            list.innerHTML = ''; // Clear current list
+            loadArtistList();
+
+            artistListString.forEach(function(artist) {
+                var listItem = document.createElement('li');
+                // Create an anchor tag for the artist's name
+                var anchor = document.createElement('a');
+                anchor.href = '/search?tags=' + encodeURIComponent(artist);
+                anchor.textContent = artist + ' ';
+                listItem.appendChild(anchor);
+
+                var removeButton = document.createElement('button');
+                removeButton.textContent = 'Remove';
+                removeButton.onclick = function() {
+                    removeArtistFromList(artist);
+                };
+                listItem.appendChild(removeButton);
+
+                list.appendChild(listItem);
+            });
+        }
+
+        // Load and display artists when page loads
+        window.onload = function() {
+            displayArtists();
+        };
+    </script>
+</body>
+</html>

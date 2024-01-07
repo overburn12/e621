@@ -1,46 +1,59 @@
 from flask import Flask, render_template, jsonify, request, redirect, url_for, send_file, make_response
+from sqlalchemy import Column, Integer, Boolean, String, ForeignKey, Table, select
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.orm import sessionmaker, relationship, declarative_base
+from sqlalchemy.sql import text, Selectable
 import requests, json, os
 import base64
 import time
 from dotenv import load_dotenv
-from sqlalchemy.sql import text
+from contextlib import contextmanager
+from sqlalchemy.orm import sessionmaker
+
+DATABASE_URI = 'sqlite:///instance/e621.db'
+engine = create_engine(DATABASE_URI)
+Session = sessionmaker(bind=engine)
+Base = declarative_base()
+
+class ViewedList(Base):
+    __tablename__ = 'viewed_list'
+    image_id = Column(Integer, primary_key=True)
+    is_favorited = Column(Boolean)
+    is_viewed = Column(Boolean)
+    my_vote = Column(Integer)
+    created_at = Column(String(50))
+    tags = relationship('Tag', secondary='image_tag', back_populates='images')
+    community_stats = relationship('CommunityStats', uselist=False, back_populates='viewed_image')
+
+class Tag(Base):
+    __tablename__ = 'tag'
+    tag_id = Column(Integer, primary_key=True)
+    tag_name = Column(String, nullable=False)
+    tag_type = Column(String, nullable=False)  
+    images = relationship('ViewedList', secondary='image_tag', back_populates='tags')
+
+class CommunityStats(Base):
+    __tablename__ = 'community_stats'
+    image_id = Column(Integer, ForeignKey('viewed_list.image_id'), primary_key=True)
+    rating = Column(String(1), nullable=False)
+    type = Column(String(10), nullable=False)
+    fav_count = Column(Integer, nullable=False)
+    up_votes = Column(Integer, nullable=False)
+    down_votes = Column(Integer, nullable=False)
+    total_score = Column(Integer, nullable=False)
+    comment_count = Column(Integer, nullable=False)
+    viewed_image = relationship('ViewedList', back_populates='community_stats')
+
+image_tag = Table('image_tag', Base.metadata,
+    Column('image_id', Integer, ForeignKey('viewed_list.image_id'), primary_key=True),
+    Column('tag_id', Integer, ForeignKey('tag.tag_id'), primary_key=True)
+)
+
+Base.metadata.create_all(engine)
 
 load_dotenv()
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///e621.db'
-db = SQLAlchemy(app)
-
-class ViewedList(db.Model):
-    image_id = db.Column(db.Integer, primary_key=True)
-    is_favorited = db.Column(db.Boolean)
-    is_viewed = db.Column(db.Boolean)
-    my_vote = db.Column(db.Integer)
-    created_at = db.Column(db.String(50))
-    tags = db.relationship('Tag', secondary='image_tag', back_populates='images')
-    community_stats = db.relationship('CommunityStats', uselist=False, back_populates='viewed_image')
-
-class Tag(db.Model):
-    tag_id = db.Column(db.Integer, primary_key=True)
-    tag_name = db.Column(db.String, nullable=False)
-    tag_type = db.Column(db.String, nullable=False)  
-    images = db.relationship('ViewedList', secondary='image_tag', back_populates='tags')
-
-class CommunityStats(db.Model):
-    image_id = db.Column(db.Integer, db.ForeignKey('viewed_list.image_id'), primary_key=True)
-    rating = db.Column(db.String(1), nullable=False)
-    type = db.Column(db.String(10), nullable=False)
-    fav_count = db.Column(db.Integer, nullable=False)
-    up_votes = db.Column(db.Integer, nullable=False)
-    down_votes = db.Column(db.Integer, nullable=False)
-    total_score = db.Column(db.Integer, nullable=False)
-    comment_count = db.Column(db.Integer, nullable=False)
-    viewed_image = db.relationship('ViewedList', back_populates='community_stats')
-
-image_tag = db.Table('image_tag',
-    db.Column('image_id', db.Integer, db.ForeignKey('viewed_list.image_id'), primary_key=True),
-    db.Column('tag_id', db.Integer, db.ForeignKey('tag.tag_id'), primary_key=True)
-)
 
 #-----------------------------------------------------------------------
 
@@ -105,40 +118,47 @@ def get_api_response(method, endpoint, args_list):
 #-----------------------------------------------------------------------
 
 def filter_results(response_json):
-    for post in response_json['posts']:
-        post_id = post['id']
-        is_favorited = post['is_favorited']
-        created_at = post['created_at']
-        tags = post['tags']
-        my_vote = 0 
-        is_hidden = False
-        viewed_image = db.session.get(ViewedList, post_id)
-        if not viewed_image:
-            viewed_image = ViewedList(image_id=post_id, created_at=created_at, is_favorited=is_favorited, is_viewed=False, my_vote=0)
-            db.session.add(viewed_image)
-        else:
-            ##if no post.score.my_vote is present, then the front end assumes this has never been seen before.
-            my_vote = viewed_image.my_vote
-            is_hidden = viewed_image.is_viewed
-            #inject some db data fields for the front end
-            post['score']['my_vote'] = my_vote
-            post['is_hidden'] = is_hidden
-        image_stats = CommunityStats(
-            image_id=post_id, 
-            rating=post['rating'], 
-            type=post['file']['ext'],
-            fav_count=post['fav_count'], 
-            up_votes=post['score']['up'], 
-            down_votes=post['score']['up'], 
-            total_score=post['score']['total'],
-            comment_count=post['comment_count']
-        )
-        process_stats(image_stats)
-        process_tags(tags, viewed_image)
-    db.session.commit()
+    with Session() as session:
 
-def process_stats(image_stats):
-    existing_entry = CommunityStats.query.get(image_stats.image_id)
+        for post in response_json['posts']:
+
+            post_id = post['id']
+            is_favorited = post['is_favorited']
+            created_at = post['created_at']
+            tags = post['tags']
+
+            my_vote = 0 
+            is_hidden = False
+
+            viewed_image = session.get(ViewedList, post_id)
+
+            if not viewed_image:
+                viewed_image = ViewedList(image_id=post_id, created_at=created_at, is_favorited=is_favorited, is_viewed=False, my_vote=0)
+                session.add(viewed_image)
+                session.commit()
+            else:
+                ##if no post.score.my_vote is present, then the front end assumes this has never been seen before.
+                my_vote = viewed_image.my_vote
+                is_hidden = viewed_image.is_viewed
+                #inject some db data fields for the front end
+                post['score']['my_vote'] = my_vote
+                post['is_hidden'] = is_hidden
+
+            image_stats = CommunityStats(
+                image_id=post_id, 
+                rating=post['rating'], 
+                type=post['file']['ext'],
+                fav_count=post['fav_count'], 
+                up_votes=post['score']['up'], 
+                down_votes=post['score']['up'], 
+                total_score=post['score']['total'],
+                comment_count=post['comment_count']
+            )
+            process_stats(session, image_stats)
+            process_tags(session, tags, viewed_image)
+
+def process_stats(session, image_stats):
+    existing_entry = session.get(CommunityStats, image_stats.image_id)
     if existing_entry:
         existing_entry.rating = image_stats.rating
         existing_entry.type = image_stats.type
@@ -148,66 +168,58 @@ def process_stats(image_stats):
         existing_entry.total_score = image_stats.total_score
         existing_entry.comment_count = image_stats.comment_count
     else:
-        db.session.add(image_stats)
-    try:
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        print(f"process_stats: Error: {e}")
+        session.add(image_stats)
+    
+    session.commit()
+
           
-def process_tags(tags, viewed_image):
-    # Convert the current tags to a set for easier comparison
-    current_tags = set((tag.tag_name, tag.tag_type) for tag in viewed_image.tags)
-    # Convert the new tags to a set
-    new_tags = set()
-    for tag_type, tag_list in tags.items():
-        for tag_name in tag_list:
-            new_tags.add((tag_name, tag_type))
+def process_tags(session, tags, viewed_image):
+    # Prepare sets for comparison
+    new_tags = {(tag_name, tag_type) for tag_type, tag_list in tags.items() for tag_name in tag_list}
+    current_tags = {(tag.tag_name, tag.tag_type) for tag in viewed_image.tags}
+
+    # Determine tags to add and remove
     tags_to_add = new_tags - current_tags
     tags_to_remove = current_tags - new_tags
+
+    # Fetch all relevant tags in one query
+    all_relevant_tag_names = {tag[0] for tag in tags_to_add.union(tags_to_remove)}
+    stmt = select(Tag).where(Tag.tag_name.in_(all_relevant_tag_names))
+    fetched_tags = { (tag.tag_name, tag.tag_type): tag for tag in session.execute(stmt).scalars() }
+
     # Process removals
     for tag_name, tag_type in tags_to_remove:
-        tag = Tag.query.filter_by(tag_name=tag_name, tag_type=tag_type).first()
+        tag = fetched_tags.get((tag_name, tag_type))
         if tag:
             viewed_image.tags.remove(tag)
+
     # Process additions
     for tag_name, tag_type in tags_to_add:
-        tag = Tag.query.filter_by(tag_name=tag_name, tag_type=tag_type).first()
+        tag = fetched_tags.get((tag_name, tag_type))
         if not tag:
             tag = Tag(tag_name=tag_name, tag_type=tag_type)
-            db.session.add(tag)
+            session.add(tag)
+            fetched_tags[(tag_name, tag_type)] = tag
         viewed_image.tags.append(tag)
-    try:
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        print(f"proccess_tags: Error: {e}")
+
+    session.commit()
+
 
 def set_vote(image_id, vote_score):
-    try:
-        entry = db.session.query(ViewedList).filter_by(image_id=image_id).first()
+    with Session() as session:
+        entry = session.query(ViewedList).filter_by(image_id=image_id).first()
         if entry:
             entry.my_vote = vote_score
-            db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        print(f"set_vote: Error: {e}")
 
 def set_hidden(image_id, is_hidden):
-    entry = db.session.query(ViewedList).filter_by(image_id=image_id).first()
-    if entry:
-        entry.is_viewed = is_hidden
-        db.session.commit()
-        return True
-    else:
-        return False
-    
-def get_community_stats_entry(image_id):
-    entry = CommunityStats.query.get(image_id)
-    if entry:
-        return entry
-    else:
-        return f"No entry found for image_id {image_id}"
+    with Session() as session:
+        entry = session.query(ViewedList).filter_by(image_id=image_id).first()
+        if entry:
+            entry.is_viewed = is_hidden
+
+def get_entry(session: Session, stmt: Selectable):
+    result = session.execute(stmt)
+    return result.scalars().first()
 
 #-----------------------------------------------------------------------
 # routes
@@ -349,30 +361,25 @@ def execute_query():
     query_data = request.get_json()
     query = text(query_data['query'])
 
-    try:
-        with db.engine.connect() as connection:
-            result_data = connection.execute(query)
-            rows = result_data.fetchall()
-            columns = list(result_data.keys())
+    with Session() as session:
+        
+        result_data = session.execute(query)
+        rows = result_data.fetchall()
+        columns = result_data.keys()
 
+        for row in result_data:
+            print(row)
+        
         result = {
-            'columns': columns,
+            'columns': [col for col in columns],
             'rows': [dict(zip(columns, row)) for row in rows]
         }
 
-    except Exception as e:
-        # Rolling back in case of error
-        db.session.rollback()
-        result = {'error': str(e)}
-
-    return jsonify(result)
+        return jsonify(result)
 
 #-----------------------------------------------------------------------
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-
     host = os.environ.get('HOST')
     port = int(os.environ.get('PORT'))
     debug = os.environ.get('DEBUG', 'False').lower() == 'true'

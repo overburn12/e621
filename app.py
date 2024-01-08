@@ -4,7 +4,7 @@ import json, os
 from dotenv import load_dotenv
 
 #modules
-from database import init_db, filter_results, set_vote, set_hidden, raw_query
+from database import init_db, filter_results, set_vote, set_favorite, raw_query
 from e621api import e621_api, e621_auth
 
 app = Flask(__name__)
@@ -14,7 +14,7 @@ username = os.environ.get('USER_NAME')
 api_key = os.environ.get('API_KEY')
 e621_auth(username, api_key)
     
-page_size = 100
+page_size = 250
 
 #-----------------------------------------------------------------------
 # routes
@@ -55,6 +55,8 @@ def fetch_recent_posts():
     
     if response.status_code == 200:
         filter_results(response_json)
+        #for post in response_json['posts']:
+        #    print(post['created_at'])
         return jsonify(response_json)
     else:
         return jsonify({
@@ -76,10 +78,12 @@ def set_fav():
     if edit_type == 'add':
         args_list = [f'post_id={post_id}']
         response = e621_api('POST', 'favorites.json', args_list)
+        set_favorite(post_id, True)
         return "key_facts"
     elif edit_type == 'delete':
         response = e621_api('DELETE', f'favorites/{post_id}.json', [''])
         if not response.content:
+            set_favorite(post_id, False)
             return "key_facts"
         else:
             return jsonify(response.json())
@@ -110,18 +114,7 @@ def vote_route():
         error_message = f'Error: Received status code {response.status_code}'
         print(error_message)
         return jsonify({'error': error_message}), response.status_code
-    
-@app.route('/hide')
-def set_hidden_route():
-    post_id = request.args.get('post_id')
-    is_hidden = request.args.get('is_hidden', type=bool)
-
-    if post_id is None or is_hidden is None:
-        return jsonify({"error": "Missing post_id or is_hidden parameter"}), 400
-
-    success = set_hidden(post_id, is_hidden)
-    return jsonify({"success": success})
-    
+        
 @app.route('/favicon.ico')
 def favicon():
     return send_file('static/favicon.ico', mimetype='image/vnd.microsoft.icon')

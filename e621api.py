@@ -22,7 +22,7 @@ def e621_api(method, endpoint, args_list):
     time_since_last_request = current_time - e621_api.last_request_time
     if time_since_last_request < 1:
         wait_time = (1 - time_since_last_request)
-        print(f"Rate limit exceeded. Waiting {wait_time * 1000:.0f} ms.")
+        #print(f"Rate limit exceeded. Waiting {wait_time * 1000:.0f} ms.")
         time.sleep(wait_time)
 
     # Construct request URL

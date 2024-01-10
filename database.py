@@ -52,32 +52,63 @@ image_tag = Table('image_tag', Base.metadata,
     Column('tag_id', Integer, ForeignKey('tags.tag_id'), primary_key=True)
 )
 
-def init_db(app):
-    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
-    Base.metadata.create_all(engine)
-
 #-----------------------------------------------------------------------
-# Populate from e621 db_export .csv files
+# csv functions
 #-----------------------------------------------------------------------
-    
-def populate_db():
-    def parse_date(date_str):
-        try:
-            return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S.%f")
-        except ValueError:
-            return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+def parse_date(date_str):
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError:
+        return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
 
-    file_path = 'posts-2024-01-07.csv'
-    chunk_size = 10000 
+def filter_csv_chunk(chunk):
+    first_entry_date = chunk.iloc[0]['created_at']
+    print(f"chunk starting date: {first_entry_date}")
+
     with Session() as session:
-        for chunk in pd.read_csv(file_path, chunksize=chunk_size):
-            first_entry_date = chunk.iloc[0]['created_at']
-            print(f"chunk starting date: {first_entry_date}")
-            for index, row in chunk.iterrows():
-                is_deleted = True if row['is_deleted'] == 't' else False
-                is_pending = True if row['is_pending'] == 't' else False
-                date_time = parse_date(row['created_at'])
-                post = Post(
+        for index, row in chunk.iterrows():
+            is_deleted = True if row['is_deleted'] == 't' else False
+            is_pending = True if row['is_pending'] == 't' else False
+            date_time = parse_date(row['created_at'])
+            db_entry = session.get(Post, row['id'])
+            if db_entry:
+                if(db_entry.change_seq < row['change_seq']):
+                    if db_entry.image_id!=row['id']:
+                        db_entry.image_id=row['id']
+                    if db_entry.uploader_id!=row['uploader_id']:
+                        db_entry.uploader_id=row['uploader_id'] 
+                    if db_entry.approver_id!=row['approver_id']:
+                        db_entry.approver_id=row['approver_id']
+                    if db_entry.created_at!=date_time:
+                        db_entry.created_at=date_time
+                    if db_entry.rating!=row['rating']:
+                        db_entry.rating=row['rating']
+                    if db_entry.description!=row['description']:    
+                        db_entry.description=row['description']
+                    if db_entry.file_ext!=row['file_ext']:    
+                        db_entry.file_ext=row['file_ext']
+                    if db_entry.file_size!=row['file_size']:    
+                        db_entry.file_size=row['file_size']
+                    if db_entry.parent_id!=row['parent_id']:    
+                        db_entry.parent_id=row['parent_id']
+                    if db_entry.change_seq!=row['change_seq']:    
+                        db_entry.change_seq=row['change_seq']
+                    if db_entry.is_deleted!=is_deleted:
+                        db_entry.is_deleted=is_deleted
+                    if db_entry.is_pending!=is_pending:
+                        db_entry.is_pending=is_pending
+                    if db_entry.comment_count!=row['comment_count']:
+                        db_entry.comment_count=row['comment_count']
+                    if db_entry.fav_count!=row['fav_count']:
+                        db_entry.fav_count=row['fav_count']
+                    if db_entry.score!=row['score']:
+                        db_entry.score=row['score']
+                    if db_entry.up_score!=row['up_score']:
+                        db_entry.up_score=row['up_score']
+                    if db_entry.down_score!=row['down_score']:
+                        db_entry.down_score=row['down_score']    
+            else:        
+                db_entry = Post(
                     image_id=row['id'],
                     uploader_id=row['uploader_id'],
                     approver_id=row['approver_id'],
@@ -96,64 +127,107 @@ def populate_db():
                     up_score=row['up_score'],
                     down_score=row['down_score']
                 )
-                session.add(post)
-            session.commit()
-    print("Done!")
-
-def harvest_old_db_data():
-
-    return
+                session.add(db_entry)
 
 #-----------------------------------------------------------------------
-# functions
+# api functions
 #-----------------------------------------------------------------------
 
-def filter_results(response_json):
+def filter_results(response_json, do_stats = True):
     with Session() as session:
         for post in response_json['posts']:
             post_id = post['id']
             is_favorited = post['is_favorited']
             tags = post['tags']
 
-            stats_entry = session.get(Stats, post_id)
-            if stats_entry:
-                #inject my_vote, else it will be highighted as a new post
-                post['score']['my_vote'] = stats_entry.my_vote
+            if do_stats or is_favorited:
+                stats_entry = session.get(Stats, post_id)
+                if stats_entry:
+                    #inject my_vote, else it will be highighted as a new post
+                    post['score']['my_vote'] = stats_entry.my_vote
 
-                if(is_favorited != stats_entry.is_favorited):
-                    stats_entry.is_favorited = is_favorited
-            else:
-                stats_entry = Stats(image_id=post_id, is_favorited=is_favorited)
-                session.add(stats_entry)
+                    if(is_favorited != stats_entry.is_favorited):
+                        stats_entry.is_favorited = is_favorited
+                else:
+                    stats_entry = Stats(image_id=post_id, is_favorited=is_favorited)
+                    session.add(stats_entry)
 
-            db_entry = session.get(Post, post_id)
-            if not db_entry:
-                db_entry = Post(image_id = post_id,
-                    uploader_id = post['uploader_id'],
-                    approver_id = post['approver_id'],
-                    created_at = convert_to_datetime(post['created_at']), 
-                    rating = post['rating'],
-                    description = post['description'],
-                    file_ext = post['file']['ext'],
-                    file_size = post['file']["size"],
-                    parent_id = post['relationships']['parent_id'],
-                    change_seq = post['change_seq'],
-                    is_deleted = post['flags']['deleted'],
-                    is_pending = post['flags']['pending'],
-                    comment_count = post['comment_count'],
-                    fav_count = post['fav_count'],
-                    score = post['score']['total'],
-                    up_score = post['score']['up'],
-                    down_score = post['score']['down'],
-                    preview_url = post['preview']['url'],  
-                    file_url = post['file']['url']
-                )
-                session.add(db_entry)
-                session.commit()
+            db_entry =  proccess_post(session, post)
+            process_tags(session, db_entry, tags)
+        session.commit()
 
-            process_tags(session, tags, db_entry)
-    
-def process_tags(session, tags, db_entry):
+def proccess_post(session, post):
+    db_entry = session.get(Post, post['id'])
+    if db_entry:
+        #always get the urls just to be sure, since we could have the most recent change_seq but no urls yet
+        if db_entry.preview_url != post['preview']['url']:
+            db_entry.preview_url = post['preview']['url']
+        if db_entry.file_url != post['file']['url']:
+            db_entry.file_url = post['file']['url']
+
+        if db_entry.change_seq < post['change_seq']: 
+            # Update individual fields if they have changed
+            if db_entry.uploader_id != post['uploader_id']:
+                db_entry.uploader_id = post['uploader_id']
+            if db_entry.approver_id != post['approver_id']:
+                db_entry.approver_id = post['approver_id']
+            if db_entry.created_at != convert_to_datetime(post['created_at']):
+                db_entry.created_at = convert_to_datetime(post['created_at'])
+            if db_entry.rating != post['rating']:
+                db_entry.rating = post['rating']
+            if db_entry.description != post['description']:
+                db_entry.description = post['description']
+            if db_entry.file_ext != post['file']['ext']:
+                db_entry.file_ext = post['file']['ext']
+            if db_entry.file_size != post['file']['size']:
+                db_entry.file_size = post['file']['size']
+            if db_entry.parent_id != post['relationships']['parent_id']:
+                db_entry.parent_id = post['relationships']['parent_id']
+            if db_entry.change_seq != post['change_seq']:
+                db_entry.change_seq = post['change_seq']
+            if db_entry.is_deleted != post['flags']['deleted']:
+                db_entry.is_deleted = post['flags']['deleted']
+            if db_entry.is_pending != post['flags']['pending']:
+                db_entry.is_pending = post['flags']['pending']
+            if db_entry.comment_count != post['comment_count']:
+                db_entry.comment_count = post['comment_count']
+            if db_entry.fav_count != post['fav_count']:
+                db_entry.fav_count = post['fav_count']
+            if db_entry.score != post['score']['total']:
+                db_entry.score = post['score']['total']
+            if db_entry.up_score != post['score']['up']:
+                db_entry.up_score = post['score']['up']
+            if db_entry.down_score != post['score']['down']:
+                db_entry.down_score = post['score']['down']
+            if db_entry.preview_url != post['preview']['url']:
+                db_entry.preview_url = post['preview']['url']
+            if db_entry.file_url != post['file']['url']:
+                db_entry.file_url = post['file']['url']
+    else:    
+        db_entry = Post(image_id = post['id'],
+            uploader_id = post['uploader_id'],
+            approver_id = post['approver_id'],
+            created_at = convert_to_datetime(post['created_at']), 
+            rating = post['rating'],
+            description = post['description'],
+            file_ext = post['file']['ext'],
+            file_size = post['file']["size"],
+            parent_id = post['relationships']['parent_id'],
+            change_seq = post['change_seq'],
+            is_deleted = post['flags']['deleted'],
+            is_pending = post['flags']['pending'],
+            comment_count = post['comment_count'],
+            fav_count = post['fav_count'],
+            score = post['score']['total'],
+            up_score = post['score']['up'],
+            down_score = post['score']['down'],
+            preview_url = post['preview']['url'],  
+            file_url = post['file']['url']
+        )
+        session.add(db_entry)
+    return db_entry
+
+def process_tags(session, db_entry, tags):
     # Prepare sets for comparison
     new_tags = {(tag_name, tag_type) for tag_type, tag_list in tags.items() for tag_name in tag_list}
     current_tags = {(tag.tag_name, tag.tag_type) for tag in db_entry.tags}
@@ -182,7 +256,9 @@ def process_tags(session, tags, db_entry):
             fetched_tags[(tag_name, tag_type)] = tag
         db_entry.tags.append(tag)
 
-    session.commit()
+#-----------------------------------------------------------------------
+# Stats functions
+#-----------------------------------------------------------------------
 
 def set_vote(image_id, vote_score):
     with Session() as session:
@@ -196,32 +272,44 @@ def set_favorite(image_id, is_favorited):
         if(entry.is_favorited != is_favorited):
             entry.is_favorited = is_favorited
 
+#-----------------------------------------------------------------------
+# other functions
+#-----------------------------------------------------------------------
+
+def init_db(app=None):
+    if app:
+        app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
+    Base.metadata.create_all(engine)
+
 def raw_query(query):
     result = {}
     with Session() as session:  
         result_data = session.execute(query)
-        rows = result_data.fetchall()
-        columns = result_data.keys()
         
-        result = {
-            'columns': [col for col in columns],
-            'rows': [dict(zip(columns, row)) for row in rows]
-        }
+        if result_data:
+            rows = result_data.fetchall()
+            columns = result_data.keys()
+            result = {
+                'columns': [col for col in columns],
+                'rows': [dict(zip(columns, row)) for row in rows]
+            }
+        else:
+            result = {
+                'columns': ['no results'],
+                'rows': ['N/A']
+            }
+        session.commit()
     return result
 
 def convert_to_datetime(input_str):
-    # Regex pattern to match the format
+    #this converts API response datetime
     pattern = r'(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2}\.\d+)([+-]\d{2}:\d{2})'
     match = re.match(pattern, input_str)
-
-    print(input_str)
 
     if not match:
         raise ValueError("Invalid format for datetime string")
 
     date_part, time_part, tz_offset = match.groups()
-
-    # Combine date and time parts
     datetime_part = f"{date_part} {time_part}"
 
     date_time = datetime.strptime(datetime_part, "%Y-%m-%d %H:%M:%S.%f")

@@ -55,8 +55,6 @@ def fetch_recent_posts():
     
     if response.status_code == 200:
         filter_results(response_json)
-        #for post in response_json['posts']:
-        #    print(post['created_at'])
         return jsonify(response_json)
     else:
         return jsonify({

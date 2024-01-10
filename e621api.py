@@ -9,7 +9,7 @@ def e621_auth(username, api_key):
         'Authorization': f"Basic {auth_header}"
     }
 
-def e621_api(method, endpoint, args_list):
+def e621_api(method, endpoint, args_list, wait_time = 1):
     if not hasattr(e621_api, 'headers'):
         print('Error: Username and API Key missing')
         return {"error": "Username and API Key missing"}
@@ -18,12 +18,11 @@ def e621_api(method, endpoint, args_list):
         e621_api.last_request_time = 0
 
     # Rate limiting check
-    current_time = time.time()
-    time_since_last_request = current_time - e621_api.last_request_time
-    if time_since_last_request < 1:
-        wait_time = (1 - time_since_last_request)
-        #print(f"Rate limit exceeded. Waiting {wait_time * 1000:.0f} ms.")
-        time.sleep(wait_time)
+    time_since_last_request = time.time() - e621_api.last_request_time
+    if time_since_last_request < wait_time:
+        sleep_time = (wait_time - time_since_last_request)
+        #print(f"Rate limit exceeded. Waiting {sleep_time * 1000:.0f} ms.")
+        time.sleep(sleep_time)
 
     # Construct request URL
     request_url = 'https://e621.net/' + endpoint

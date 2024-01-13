@@ -131,27 +131,34 @@ def filter_csv_chunk(chunk):
                 session.add(db_entry)
 
 #-----------------------------------------------------------------------
+# bulk json functions 
+#-----------------------------------------------------------------------
+                
+def bulk_process(response_json):
+    
+    return response_json
+
+#-----------------------------------------------------------------------
 # api functions
 #-----------------------------------------------------------------------
 
-def filter_results(response_json, do_stats = True):
+def filter_results(response_json):
     with Session() as session:
         for post in response_json['posts']:
             post_id = post['id']
             is_favorited = post['is_favorited']
             tags = post['tags']
 
-            if do_stats or is_favorited:
-                stats_entry = session.get(Stats, post_id)
-                if stats_entry:
-                    #inject my_vote, else it will be highighted as a new post
-                    post['score']['my_vote'] = stats_entry.my_vote
+            stats_entry = session.get(Stats, post_id)
+            if stats_entry:
+                #inject my_vote, else it will be highighted as a new post
+                post['score']['my_vote'] = stats_entry.my_vote
 
-                    if(is_favorited != stats_entry.is_favorited):
-                        stats_entry.is_favorited = is_favorited
-                else:
-                    stats_entry = Stats(image_id=post_id, is_favorited=is_favorited)
-                    session.add(stats_entry)
+                if(is_favorited != stats_entry.is_favorited):
+                    stats_entry.is_favorited = is_favorited
+            else:
+                stats_entry = Stats(image_id=post_id, is_favorited=is_favorited)
+                session.add(stats_entry)
 
             db_entry =  proccess_post(session, post)
             process_tags(session, db_entry, tags)

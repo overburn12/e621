@@ -185,19 +185,13 @@ def filter_results(response_json, do_stats = True):
                     stats_entry = Stats(image_id=post_id, is_favorited=is_favorited)
                     session.add(stats_entry)
 
-            db_entry =  proccess_post(session, post)
+            db_entry = proccess_post(session, post)
             process_tags(session, db_entry, tags)
         session.commit()
 
 def proccess_post(session, post):
     db_entry = session.get(Post, post['id'])
     if db_entry:
-        #always get the urls just to be sure, since we could have the most recent change_seq but no urls yet
-        if db_entry.preview_url != post['preview']['url']:
-            db_entry.preview_url = post['preview']['url']
-        if db_entry.file_url != post['file']['url']:
-            db_entry.file_url = post['file']['url']
-
         if db_entry.change_seq < post['change_seq']: 
             # Update individual fields if they have changed
             if db_entry.uploader_id != post['uploader_id']:

@@ -190,46 +190,28 @@ def filter_results(response_json, do_stats = True):
         session.commit()
 
 def proccess_post(session, post):
+    fields_to_update = ['uploader_id', 'approver_id', 'created_at', 'rating', 'description', 'file_ext', 'file_size', 'parent_id', 'change_seq', 'is_deleted', 'is_pending', 'comment_count', 'fav_count', 'score', 'up_score', 'down_score', 'preview_url', 'file_url']
     db_entry = session.get(Post, post['id'])
     if db_entry:
         if db_entry.change_seq < post['change_seq']: 
-            # Update individual fields if they have changed
-            if db_entry.uploader_id != post['uploader_id']:
-                db_entry.uploader_id = post['uploader_id']
-            if db_entry.approver_id != post['approver_id']:
-                db_entry.approver_id = post['approver_id']
-            if db_entry.created_at != convert_to_datetime(post['created_at']):
-                db_entry.created_at = convert_to_datetime(post['created_at'])
-            if db_entry.rating != post['rating']:
-                db_entry.rating = post['rating']
-            if db_entry.description != post['description']:
-                db_entry.description = post['description']
-            if db_entry.file_ext != post['file']['ext']:
-                db_entry.file_ext = post['file']['ext']
-            if db_entry.file_size != post['file']['size']:
-                db_entry.file_size = post['file']['size']
-            if db_entry.parent_id != post['relationships']['parent_id']:
-                db_entry.parent_id = post['relationships']['parent_id']
-            if db_entry.change_seq != post['change_seq']:
-                db_entry.change_seq = post['change_seq']
-            if db_entry.is_deleted != post['flags']['deleted']:
-                db_entry.is_deleted = post['flags']['deleted']
-            if db_entry.is_pending != post['flags']['pending']:
-                db_entry.is_pending = post['flags']['pending']
-            if db_entry.comment_count != post['comment_count']:
-                db_entry.comment_count = post['comment_count']
-            if db_entry.fav_count != post['fav_count']:
-                db_entry.fav_count = post['fav_count']
-            if db_entry.score != post['score']['total']:
-                db_entry.score = post['score']['total']
-            if db_entry.up_score != post['score']['up']:
-                db_entry.up_score = post['score']['up']
-            if db_entry.down_score != post['score']['down']:
-                db_entry.down_score = post['score']['down']
-            if db_entry.preview_url != post['preview']['url']:
-                db_entry.preview_url = post['preview']['url']
-            if db_entry.file_url != post['file']['url']:
-                db_entry.file_url = post['file']['url']
+            db_entry.uploader_id = post['uploader_id']
+            db_entry.approver_id = post['approver_id']
+            db_entry.created_at = convert_to_datetime(post['created_at'])
+            db_entry.rating = post['rating']
+            db_entry.description = post['description']
+            db_entry.file_ext = post['file']['ext']
+            db_entry.file_size = post['file']['size']
+            db_entry.parent_id = post['relationships']['parent_id']
+            db_entry.change_seq = post['change_seq']
+            db_entry.is_deleted = post['flags']['deleted']
+            db_entry.is_pending = post['flags']['pending']
+            db_entry.comment_count = post['comment_count']
+            db_entry.fav_count = post['fav_count']
+            db_entry.score = post['score']['total']
+            db_entry.up_score = post['score']['up']
+            db_entry.down_score = post['score']['down']
+            db_entry.preview_url = post['preview']['url']
+            db_entry.file_url = post['file']['url']
     else:    
         db_entry = Post(image_id = post['id'],
             uploader_id = post['uploader_id'],

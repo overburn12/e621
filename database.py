@@ -190,7 +190,6 @@ def filter_results(response_json, do_stats = True):
         session.commit()
 
 def proccess_post(session, post):
-    fields_to_update = ['uploader_id', 'approver_id', 'created_at', 'rating', 'description', 'file_ext', 'file_size', 'parent_id', 'change_seq', 'is_deleted', 'is_pending', 'comment_count', 'fav_count', 'score', 'up_score', 'down_score', 'preview_url', 'file_url']
     db_entry = session.get(Post, post['id'])
     if db_entry:
         if db_entry.change_seq < post['change_seq']: 

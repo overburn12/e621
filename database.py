@@ -259,12 +259,14 @@ def set_vote(image_id, vote_score):
         entry = session.get(Stats, image_id)
         if (entry.my_vote != vote_score):
             entry.my_vote = vote_score
+            session.commit()
 
 def set_favorite(image_id, is_favorited):
     with Session() as session:
         entry = session.get(Stats, image_id)
         if(entry.is_favorited != is_favorited):
             entry.is_favorited = is_favorited
+            session.commit()
 
 #-----------------------------------------------------------------------
 # other functions

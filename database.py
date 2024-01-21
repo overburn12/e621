@@ -117,13 +117,16 @@ def filter_csv_chunk(chunk):
 #-----------------------------------------------------------------------
 # bulk json functions 
 #-----------------------------------------------------------------------
-                
-def bulk_process_tags(session, tags_dict, db_entry, tags):
-    #tags_dict = {}
-    #all_tags = session.query(Tag).all()
-    #for tag in all_tags:
-    #    tags_dict[(tag.tag_name, tag.tag_type)] = tag
+        
+tags_dict = {}
 
+def init_tags_dict():
+    with Session() as session:
+        all_tags = session.query(Tag).all()
+        for tag in all_tags:
+            tags_dict[(tag.tag_name, tag.tag_type)] = tag
+                
+def bulk_process_tags(session, db_entry, tags):
     if db_entry.tags:
         db_entry.tags.clear()
     

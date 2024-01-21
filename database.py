@@ -74,40 +74,23 @@ def filter_csv_chunk(chunk):
             db_entry = session.get(Post, row['id'])
             if db_entry:
                 if(db_entry.change_seq < row['change_seq']):
-                    if db_entry.image_id!=row['id']:
-                        db_entry.image_id=row['id']
-                    if db_entry.uploader_id!=row['uploader_id']:
-                        db_entry.uploader_id=row['uploader_id'] 
-                    if db_entry.approver_id!=row['approver_id']:
-                        db_entry.approver_id=row['approver_id']
-                    if db_entry.created_at!=date_time:
-                        db_entry.created_at=date_time
-                    if db_entry.rating!=row['rating']:
-                        db_entry.rating=row['rating']
-                    if db_entry.description!=row['description']:    
-                        db_entry.description=row['description']
-                    if db_entry.file_ext!=row['file_ext']:    
-                        db_entry.file_ext=row['file_ext']
-                    if db_entry.file_size!=row['file_size']:    
-                        db_entry.file_size=row['file_size']
-                    if db_entry.parent_id!=row['parent_id']:    
-                        db_entry.parent_id=row['parent_id']
-                    if db_entry.change_seq!=row['change_seq']:    
-                        db_entry.change_seq=row['change_seq']
-                    if db_entry.is_deleted!=is_deleted:
-                        db_entry.is_deleted=is_deleted
-                    if db_entry.is_pending!=is_pending:
-                        db_entry.is_pending=is_pending
-                    if db_entry.comment_count!=row['comment_count']:
-                        db_entry.comment_count=row['comment_count']
-                    if db_entry.fav_count!=row['fav_count']:
-                        db_entry.fav_count=row['fav_count']
-                    if db_entry.score!=row['score']:
-                        db_entry.score=row['score']
-                    if db_entry.up_score!=row['up_score']:
-                        db_entry.up_score=row['up_score']
-                    if db_entry.down_score!=row['down_score']:
-                        db_entry.down_score=row['down_score']    
+                    db_entry.image_id=row['id']
+                    db_entry.uploader_id=row['uploader_id'] 
+                    db_entry.approver_id=row['approver_id']
+                    db_entry.created_at=date_time
+                    db_entry.rating=row['rating']
+                    db_entry.description=row['description']  
+                    db_entry.file_ext=row['file_ext']   
+                    db_entry.file_size=row['file_size']   
+                    db_entry.parent_id=row['parent_id']  
+                    db_entry.change_seq=row['change_seq']
+                    db_entry.is_deleted=is_deleted
+                    db_entry.is_pending=is_pending
+                    db_entry.comment_count=row['comment_count']
+                    db_entry.fav_count=row['fav_count']
+                    db_entry.score=row['score']
+                    db_entry.up_score=row['up_score']
+                    db_entry.down_score=row['down_score']    
             else:        
                 db_entry = Post(
                     image_id=row['id'],
@@ -129,6 +112,7 @@ def filter_csv_chunk(chunk):
                     down_score=row['down_score']
                 )
                 session.add(db_entry)
+        session.commit()
 
 #-----------------------------------------------------------------------
 # bulk json functions 

@@ -134,34 +134,24 @@ def filter_csv_chunk(chunk):
 # bulk json functions 
 #-----------------------------------------------------------------------
                 
-def bulk_process(response_json):
-    tag_types = ['general', 'species', 'character', 'artist', 'invalid', 'lore', 'meta']
+def bulk_process_tags(session, tags_dict, db_entry, tags):
+    #tags_dict = {}
+    #all_tags = session.query(Tag).all()
+    #for tag in all_tags:
+    #    tags_dict[(tag.tag_name, tag.tag_type)] = tag
+
+    if db_entry.tags:
+        db_entry.tags.clear()
     
-    tags_dict = {tag_type: set() for tag_type in tag_types}
-    new_tags = []
+    for tag_type in tags:
+        for tag in tags[tag_type]:
+            if (tag, tag_type) not in tags_dict:
+                new_db_tag = Tag(tag_name=tag, tag_type=tag_type)
+                tags_dict[(tag, tag_type)] = new_db_tag
+                session.add(new_db_tag)
+            db_entry.tags.append(tags_dict[(tag, tag_type)])
 
-    with Session() as session:
-        all_tags = session.query(Tag).all()
-        for tag in all_tags:
-            tags_dict[tag.tag_type].add(tag.name)
-
-        for post in response_json['posts']:
-            for tag_type in tag_types:
-                for tag in post['tags'][tag_type]:
-                    if tag not in tags_dict[tag_type]:
-                        # New tag found, add it to both tags_dict and tags_add
-                        tags_dict[tag_type].add(tag)
-                        new_tags.append({"tag_name": tag, "tag_type": tag_type})
-        if new_tags:
-            session.bulk_insert_mappings(Tag, new_tags)
-            session.commit()
-
-        for post in response_json['posts']:
-            dummy_function = ''
-
-    
-    return "done!"
-
+    session.commit()
 #-----------------------------------------------------------------------
 # api functions
 #-----------------------------------------------------------------------

@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 from sqlalchemy.sql import Selectable
 import pandas as pd
 from datetime import datetime, timedelta
-import re
+import re, time
 
 DATABASE_URI = 'sqlite:///instance/e621.db'
 engine = create_engine(DATABASE_URI)
@@ -115,35 +115,31 @@ def filter_csv_chunk(chunk):
         session.commit()
 
 #-----------------------------------------------------------------------
-# bulk json functions 
+# tags_dict functions 
 #-----------------------------------------------------------------------
         
 tags_dict = {}
 
 def init_tags_dict():
+    print('loading DB tags...')
+    start_time = time.time()
+
     with Session() as session:
         all_tags = session.query(Tag).all()
         for tag in all_tags:
-            tags_dict[(tag.tag_name, tag.tag_type)] = tag
+            tag_key = (tag.tag_name, tag.tag_type)
+            tags_dict[tag_key] = tag
                 
-def bulk_process_tags(session, db_entry, tags):
-    if db_entry.tags:
-        db_entry.tags.clear()
-    
-    for tag_type in tags:
-        for tag in tags[tag_type]:
-            if (tag, tag_type) not in tags_dict:
-                new_db_tag = Tag(tag_name=tag, tag_type=tag_type)
-                tags_dict[(tag, tag_type)] = new_db_tag
-                session.add(new_db_tag)
-            db_entry.tags.append(tags_dict[(tag, tag_type)])
+    delta_time = time.time() - start_time
+    print(f'DB tags loaded in {delta_time:.2f} seconds')
 
-    session.commit()
 #-----------------------------------------------------------------------
 # api functions
 #-----------------------------------------------------------------------
 
 def filter_results(response_json, do_stats = True):
+    process_tags = process_tags_with_dict if tags_dict else process_tags_with_db
+
     with Session() as session:
         for post in response_json['posts']:
             post_id = post['id']
@@ -163,7 +159,7 @@ def filter_results(response_json, do_stats = True):
                     session.add(stats_entry)
 
             db_entry = proccess_post(session, post)
-            bulk_process_tags(session, db_entry, tags)
+            process_tags(session, db_entry, tags)
         session.commit()
 
 def proccess_post(session, post):
@@ -212,7 +208,20 @@ def proccess_post(session, post):
         session.add(db_entry)
     return db_entry
 
-def process_tags(session, db_entry, tags):
+def process_tags_with_dict(session, db_entry, tags):
+    db_entry.tags.clear()
+    
+    for tag_type in tags:
+        for tag in tags[tag_type]:
+            tag_key = (tag, tag_type)
+            db_tag = tags_dict.get(tag_key)
+            if not db_tag:
+                db_tag = Tag(tag_name=tag, tag_type=tag_type)
+                tags_dict[tag_key] = db_tag
+                session.add(db_tag)
+            db_entry.tags.append(db_tag)
+
+def process_tags_with_db(session, db_entry, tags):
     # Prepare sets for comparison
     new_tags = {(tag_name, tag_type) for tag_type, tag_list in tags.items() for tag_name in tag_list}
     current_tags = {(tag.tag_name, tag.tag_type) for tag in db_entry.tags}
@@ -261,10 +270,12 @@ def set_favorite(image_id, is_favorited):
 # other functions
 #-----------------------------------------------------------------------
 
-def init_db(app=None):
+def init_db(app = None, use_tags_dict = False):
     if app:
         app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
     Base.metadata.create_all(engine)
+    if use_tags_dict:
+        init_tags_dict()
 
 def raw_query(query):
     result = {}

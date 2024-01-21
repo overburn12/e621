@@ -123,23 +123,24 @@ tags_dict = {}
 def init_tags_dict():
     print('loading DB tags...')
     start_time = time.time()
+    total_tags = 0
 
     with Session() as session:
         all_tags = session.query(Tag).all()
         for tag in all_tags:
             tag_key = (tag.tag_name, tag.tag_type)
             tags_dict[tag_key] = tag
+            total_tags += 1
                 
     delta_time = time.time() - start_time
-    print(f'DB tags loaded in {delta_time:.2f} seconds')
+    tag_rate = total_tags / delta_time
+    print(f'tags: {total_tags}, time: {delta_time:.2f} seconds, rate: {tag_rate:.0f} tags/sec')
 
 #-----------------------------------------------------------------------
 # api functions
 #-----------------------------------------------------------------------
 
 def filter_results(response_json, do_stats = True):
-    process_tags = process_tags_with_dict if tags_dict else process_tags_with_db
-
     with Session() as session:
         for post in response_json['posts']:
             post_id = post['id']
@@ -208,47 +209,29 @@ def proccess_post(session, post):
         session.add(db_entry)
     return db_entry
 
-def process_tags_with_dict(session, db_entry, tags):
-    db_entry.tags.clear()
-    
-    for tag_type in tags:
-        for tag in tags[tag_type]:
-            tag_key = (tag, tag_type)
-            db_tag = tags_dict.get(tag_key)
-            if not db_tag:
-                db_tag = Tag(tag_name=tag, tag_type=tag_type)
-                tags_dict[tag_key] = db_tag
-                session.add(db_tag)
-            db_entry.tags.append(db_tag)
-
-def process_tags_with_db(session, db_entry, tags):
-    # Prepare sets for comparison
+def process_tags(session, db_entry, tags):
     new_tags = {(tag_name, tag_type) for tag_type, tag_list in tags.items() for tag_name in tag_list}
     current_tags = {(tag.tag_name, tag.tag_type) for tag in db_entry.tags}
 
-    # Determine tags to add and remove
     tags_to_add = new_tags - current_tags
     tags_to_remove = current_tags - new_tags
 
-    # Fetch all relevant tags in one query
-    all_relevant_tag_names = {tag[0] for tag in tags_to_add.union(tags_to_remove)}
-    stmt = select(Tag).where(Tag.tag_name.in_(all_relevant_tag_names))
-    fetched_tags = { (tag.tag_name, tag.tag_type): tag for tag in session.execute(stmt).scalars() }
-
     # Process removals
     for tag_name, tag_type in tags_to_remove:
-        tag = fetched_tags.get((tag_name, tag_type))
-        if tag:
+        tag = tags_dict.get((tag_name, tag_type))
+        if tag in db_entry.tags:  # Ensure tag is actually in the db_entry's current tags
             db_entry.tags.remove(tag)
 
     # Process additions
     for tag_name, tag_type in tags_to_add:
-        tag = fetched_tags.get((tag_name, tag_type))
+        tag_key = (tag_name, tag_type)
+        tag = tags_dict.get(tag_key)
         if not tag:
             tag = Tag(tag_name=tag_name, tag_type=tag_type)
+            tags_dict[tag_key] = tag
             session.add(tag)
-            fetched_tags[(tag_name, tag_type)] = tag
-        db_entry.tags.append(tag)
+        if tag not in db_entry.tags:  # Avoid re-adding if already present
+            db_entry.tags.append(tag)
 
 #-----------------------------------------------------------------------
 # Stats functions
@@ -272,12 +255,11 @@ def set_favorite(image_id, is_favorited):
 # other functions
 #-----------------------------------------------------------------------
 
-def init_db(app = None, use_tags_dict = False):
+def init_db(app = None):
     if app:
         app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
     Base.metadata.create_all(engine)
-    if use_tags_dict:
-        init_tags_dict()
+    init_tags_dict()
 
 def raw_query(query):
     result = {}

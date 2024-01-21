@@ -163,7 +163,7 @@ def filter_results(response_json, do_stats = True):
                     session.add(stats_entry)
 
             db_entry = proccess_post(session, post)
-            process_tags(session, db_entry, tags)
+            bulk_process_tags(session, db_entry, tags)
         session.commit()
 
 def proccess_post(session, post):

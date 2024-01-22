@@ -125,13 +125,16 @@ def init_tags_dict():
     start_time = time.time()
     total_tags = 0
 
-    with Session() as session:
-        all_tags = session.query(Tag).all()
-        for tag in all_tags:
-            tag_key = (tag.tag_name, tag.tag_type)
-            tags_dict[tag_key] = tag
-            total_tags += 1
-                
+    if not tags_dict:
+        with Session() as session:
+            all_tags = session.query(Tag).all()
+            for tag in all_tags:
+                tag_key = (tag.tag_name, tag.tag_type)
+                tags_dict[tag_key] = tag
+                total_tags += 1
+    else:
+        print('tags already loaded')
+        
     delta_time = time.time() - start_time
     tag_rate = total_tags / delta_time
     print(f'tags: {total_tags}, time: {delta_time:.2f} seconds, rate: {tag_rate:.0f} tags/sec')

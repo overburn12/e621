@@ -1,3 +1,4 @@
+var myChart = null;
 
 function renderChart() {
     const timeColumn = document.getElementById('timeColumn').value;

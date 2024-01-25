@@ -219,23 +219,27 @@ def process_tags(session, db_entry, tags):
     tags_to_add = new_tags - current_tags
     tags_to_remove = current_tags - new_tags
 
+    # Process tag creation
+    for tag_name, tag_type in new_tags:
+        tag = tags_dict.get((tag_name, tag_type))
+        if not tag:
+            tag = Tag(tag_name=tag_name, tag_type=tag_type)
+            tags_dict[(tag_name, tag_type)] = tag
+            session.add(tag)
+
     # Process removals
     for tag_name, tag_type in tags_to_remove:
         tag = tags_dict.get((tag_name, tag_type))
-        if tag in db_entry.tags:  # Ensure tag is actually in the db_entry's current tags
-            db_entry.tags.remove(tag)
+        db_entry.tags.remove(tag)
 
     # Process additions
     for tag_name, tag_type in tags_to_add:
-        tag_key = (tag_name, tag_type)
-        tag = tags_dict.get(tag_key)
-        if not tag:
-            tag = Tag(tag_name=tag_name, tag_type=tag_type)
-            tags_dict[tag_key] = tag
-            session.add(tag)
-        if tag not in db_entry.tags:  # Avoid re-adding if already present
+        try:
+            tag = tags_dict.get((tag_name, tag_type))
             db_entry.tags.append(tag)
-
+        except Exception as e:
+            print(f"Error occurred with tag_name: {tag_name}, tag_type: {tag_type}")
+            print(f"Error details: {e}")
 #-----------------------------------------------------------------------
 # Stats functions
 #-----------------------------------------------------------------------

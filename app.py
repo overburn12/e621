@@ -9,12 +9,15 @@ from e621api import e621_api, e621_auth
 
 app = Flask(__name__)
 load_dotenv()
-init_db(app)
 username = os.environ.get('USER_NAME')
 api_key = os.environ.get('API_KEY')
+use_db = os.environ.get('USE_DB', True).lower() == 'true'
 e621_auth(username, api_key)
     
 page_size = 250
+
+if use_db:
+    init_db(app)
 
 #-----------------------------------------------------------------------
 # routes
@@ -54,7 +57,8 @@ def fetch_recent_posts():
     response_json = response.json()
     
     if response.status_code == 200:
-        filter_results(response_json)
+        if use_db:
+            filter_results(response_json)
         return jsonify(response_json)
     else:
         return jsonify({
@@ -65,6 +69,9 @@ def fetch_recent_posts():
     
 @app.route('/fav')
 def set_fav():
+    if not use_db:
+        return jsonify({"error": "db not used"})
+    
     post_id = request.args.get('post_id')
     edit_type = request.args.get('type')
 
@@ -90,6 +97,9 @@ def set_fav():
     
 @app.route('/vote')
 def vote_route():
+    if not use_db:
+        return jsonify({"error": "db not used"})
+    
     score_id = request.args.get('score')
     no_unvote = request.args.get('no_unvote')
     post_id = request.args.get('post_id')
@@ -144,10 +154,14 @@ def update_artists():
 
 @app.route('/sql', methods=['GET'])
 def sql_page():
+    if not use_db:
+        return jsonify({"error": "db not used"})
     return render_template("sql.html")
 
 @app.route('/sql', methods=['POST'])
 def execute_query():
+    if not use_db:
+        return jsonify({"error": "db not used"})
     query_data = request.get_json()
     query = text(query_data['query'])
     result = raw_query(query)

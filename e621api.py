@@ -2,12 +2,13 @@ import base64
 import time
 import requests
 
-def e621_auth(username, api_key):
+def e621_auth(username, api_key, e6_uri = 'https://e621.net/'):
     auth_header = base64.b64encode(f"{username}:{api_key}".encode()).decode()
     e621_api.headers = {
         'User-Agent': f"e621-Favorite-Tracker/1.0 (user: {username})",
         'Authorization': f"Basic {auth_header}"
     }
+    e621_api.uri = e6_uri
 
 def e621_api(method, endpoint, args_list, wait_time = 1):
     if not hasattr(e621_api, 'headers'):
@@ -25,7 +26,7 @@ def e621_api(method, endpoint, args_list, wait_time = 1):
         time.sleep(sleep_time)
 
     # Construct request URL
-    request_url = 'https://e621.net/' + endpoint
+    request_url = e621_api.uri + endpoint
     if args_list:
         request_url += '?' + '&'.join(args_list)
 

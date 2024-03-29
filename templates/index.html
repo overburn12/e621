@@ -241,6 +241,45 @@
         document.getElementById('searchText').value = searchTags;
 
         /*---------------------------------------------------------------------------------------------*/
+        // clipboard function
+        /*---------------------------------------------------------------------------------------------*/
+
+        function copyToClipboard(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+
+            textarea.select();
+            textarea.setSelectionRange(0, 99999); // For mobile devices
+
+            try {
+                document.execCommand('copy');
+            } catch (err) {
+                console.error('Unable to copy to clipboard', err);
+            }
+
+            document.body.removeChild(textarea);
+
+            console.log("actually copied!");
+        }
+
+        function tags_to_str(post) {
+            const categories = ["artist", "character", "species", "general", "lore"];
+            let formattedTags = [];
+    
+            categories.forEach(category => {
+                if (post.tags && Array.isArray(post.tags[category])) {
+                    post.tags[category].forEach(tag => {
+                        // Replace underscores with spaces and add to the formattedTags array
+                        formattedTags.push(tag.replace(/_/g, " "));
+                    });
+                }
+            });
+            return formattedTags.join(", ");
+        }
+        
+        
+        /*---------------------------------------------------------------------------------------------*/
         // url functions
         /*---------------------------------------------------------------------------------------------*/
 
@@ -344,22 +383,15 @@
             grid.append(bufferContainer);
         }
 
-        function removeGridItem(post_id){
-            const gridContainer = getElementFromPostID(post_id);
-            const queryArgs = [];
-            queryArgs.push(`post_id=${post_id}`);
-            queryArgs.push(`is_hidden=${true}`);
-            fetch(generateQueryUrl('/hide', queryArgs))
-            .then(response => response.json())
-            .then(data => {
-                gridContainer.style.display = "none";
-                gridContainer.setAttribute('is_hidden', 'true');
-            });
-        }
 
         function addImageToGrid(post){
             if(post.is_hidden){
                 return;
+            }
+
+            if (!post.tags.artist && post.tags.director) {
+                // Rename 'director' to 'artist', so we can display e6ai.net data 
+                post.tags.artist = post.tags.director;
             }
 
             //the conatiner for the grid
@@ -656,14 +688,33 @@
             tagsDiv.classList.add('tag-container');
             tagsDiv.innerHTML = '';
 
+            let tags_links = "";
+
             Object.keys(post.tags).forEach(categoryKey => {
                 let categoryName = categoryKey.charAt(0).toUpperCase() + categoryKey.slice(1); // Capitalize the first letter
-                tagsDiv.innerHTML += `<br><b>${categoryName}</b><br>`;
-                post.tags[categoryKey].forEach(datapoint => {
-                    tagsDiv.innerHTML += `<a href="/search?tags=${datapoint}" style="color: var(--color-tag-${categoryKey});">${datapoint}</a><br>`;
-                });  //--color-tag-artist
+                tags_links += `<br><b>${categoryName}</b><br>`;
+                post.tags[categoryKey].forEach(datapoint=> {
+                    tags_links += `<a href="/search?tags=${datapoint}" style="color: var(--color-tag-${categoryKey});">${datapoint}</a><br>`;
+                }); 
             });
             
+            let tags_str = tags_to_str(post);
+
+            const copyButton = document.createElement('div');
+            copyButton.id = 'tags-copy-button'; 
+            copyButton.classList.add('button-div');
+            copyButton.textContent = 'Copy';
+            copyButton.addEventListener('click', function() {
+                console.log('Button clicked');
+                copyToClipboard(tags_str);
+            });
+
+            const tagsContent = document.createElement("div");
+            tagsContent.innerHTML = tags_links;
+
+            tagsDiv.appendChild(copyButton);
+            tagsDiv.appendChild(tagsContent);
+
             //assemble the modal structure
             const contentDiv = document.createElement('div');
             contentDiv.id = 'content-divider';

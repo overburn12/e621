@@ -11,10 +11,17 @@ app = Flask(__name__)
 load_dotenv()
 username = os.environ.get('USER_NAME')
 api_key = os.environ.get('API_KEY')
+api_key_e6ai = os.environ.get('API_KEY_AI')
 use_db = os.environ.get('USE_DB', True).lower() == 'true'
-e621_auth(username, api_key)
-    
-page_size = 250
+
+use_ai = True
+
+if(use_ai):
+    e621_auth(username, api_key_e6ai, 'https://e6ai.net/')
+else:
+    e621_auth(username, api_key)
+
+page_size = 100
 
 if use_db:
     init_db(app)
@@ -66,12 +73,9 @@ def fetch_recent_posts():
             'status_code': response.status_code,
             'response': response.text
         }), response.status_code
-    
+
 @app.route('/fav')
 def set_fav():
-    if not use_db:
-        return jsonify({"error": "db not used"})
-    
     post_id = request.args.get('post_id')
     edit_type = request.args.get('type')
 
@@ -83,12 +87,14 @@ def set_fav():
     if edit_type == 'add':
         args_list = [f'post_id={post_id}']
         response = e621_api('POST', 'favorites.json', args_list)
-        set_favorite(post_id, True)
+        if use_db:
+            set_favorite(post_id, True)
         return "key_facts"
     elif edit_type == 'delete':
         response = e621_api('DELETE', f'favorites/{post_id}.json', [''])
         if not response.content:
-            set_favorite(post_id, False)
+            if use_db:
+                set_favorite(post_id, False)
             return "key_facts"
         else:
             return jsonify(response.json())
@@ -97,9 +103,6 @@ def set_fav():
     
 @app.route('/vote')
 def vote_route():
-    if not use_db:
-        return jsonify({"error": "db not used"})
-    
     score_id = request.args.get('score')
     no_unvote = request.args.get('no_unvote')
     post_id = request.args.get('post_id')
@@ -114,7 +117,8 @@ def vote_route():
         required_keys = ['up', 'down', 'score', 'our_score']
         if all(key in response_json for key in required_keys):
             our_score = response_json['our_score']
-            set_vote(post_id, our_score)
+            if use_db:
+                set_vote(post_id, our_score)
             return jsonify(response_json)
         else:
             return jsonify({'error': 'Response JSON is missing one or more required keys'}), 500
@@ -122,7 +126,7 @@ def vote_route():
         error_message = f'Error: Received status code {response.status_code}'
         print(error_message)
         return jsonify({'error': error_message}), response.status_code
-        
+
 @app.route('/favicon.ico')
 def favicon():
     return send_file('static/favicon.ico', mimetype='image/vnd.microsoft.icon')
@@ -170,8 +174,6 @@ def execute_query():
 #-----------------------------------------------------------------------
 
 if __name__ == '__main__':
-    host = os.environ.get('HOST')
-    port = int(os.environ.get('PORT'))
     debug = os.environ.get('DEBUG', 'False').lower() == 'true'
     app.debug = debug
-    app.run(host=host, port=port)
+    app.run(host='::', port=8084)

@@ -1,17 +1,16 @@
 from sqlalchemy import Column, Integer, Boolean, String, ForeignKey, Table, select
-from sqlalchemy import create_engine, DateTime
+from sqlalchemy import create_engine, DateTime, Index
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base
-from sqlalchemy.sql import Selectable
-import pandas as pd
 from datetime import datetime, timedelta
 import re, time
 
-DATABASE_URI = 'sqlite:///instance/e621.db'
+DATABASE_URI = 'sqlite:///instance/ramdisk/e621.db'
 engine = create_engine(DATABASE_URI)
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
 class Post(Base):
+    #the images of the image board
     __tablename__ = 'posts'
     image_id = Column(Integer, primary_key=True)
     uploader_id = Column(Integer)
@@ -22,19 +21,20 @@ class Post(Base):
     file_ext = Column(String)
     file_size = Column(Integer)
     parent_id = Column(Integer)
-    change_seq = Column(Integer)
+    change_seq = Column(Integer) #increases any time the entry is updated/changed
     is_deleted = Column(Boolean)
     is_pending = Column(Boolean)
     comment_count = Column(Integer)
     fav_count = Column(Integer)
-    score = Column(Integer)
-    up_score = Column(Integer)
-    down_score = Column(Integer)
+    score = Column(Integer) # total score overall (downvotes+upvotes)
+    up_score = Column(Integer) # total upvotes count
+    down_score = Column(Integer) # total downvotes count
     preview_url = Column(String, default='')  
     file_url = Column(String, default='') 
     tags = relationship('Tag', secondary='image_tag', back_populates='images')
 
 class Tag(Base):
+    #tags for the images. note: if tag_type='artist' then tag_name=artists name
     __tablename__ = 'tags'
     tag_id = Column(Integer, primary_key=True)
     tag_name = Column(String, nullable=False)
@@ -42,78 +42,35 @@ class Tag(Base):
     images = relationship('Post', secondary='image_tag', back_populates='tags')
 
 class Stats(Base):
+    #used to track my personal interactions with the image board
     __tablename__ = 'stats'
     image_id = Column(Integer, ForeignKey('posts.image_id'), primary_key=True)
     is_favorited = Column(Boolean, default=False, nullable=False)
-    my_vote = Column(Integer, default=0, nullable=False)
+    my_vote = Column(Integer, default=0, nullable=False) # -1 = down vote, 0 = no vote, 1 = upvote
 
 image_tag = Table('image_tag', Base.metadata,
     Column('image_id', Integer, ForeignKey('posts.image_id'), primary_key=True),
     Column('tag_id', Integer, ForeignKey('tags.tag_id'), primary_key=True)
 )
 
-#-----------------------------------------------------------------------
-# csv functions
-#-----------------------------------------------------------------------
+from sqlalchemy.orm import validates
 
-def parse_date(date_str):
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S.%f")
-    except ValueError:
-        return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+class TagCooccurrence(Base):
+    __tablename__ = 'tag_cooccurrences'
+    tag1_id = Column(Integer, ForeignKey('tags.tag_id'), primary_key=True)
+    tag2_id = Column(Integer, ForeignKey('tags.tag_id'), primary_key=True)
+    cooccurrence_count = Column(Integer, default=0)
 
-def filter_csv_chunk(chunk):
-    first_entry_date = chunk.iloc[0]['created_at']
-    print(f"chunk starting date: {first_entry_date}")
+    __table_args__ = (
+        Index('idx_cooccurrence_tags', 'tag1_id', 'tag2_id'),
+        Index('idx_cooccurrence_count', 'cooccurrence_count'),
+    )
 
-    with Session() as session:
-        for index, row in chunk.iterrows():
-            is_deleted = True if row['is_deleted'] == 't' else False
-            is_pending = True if row['is_pending'] == 't' else False
-            date_time = parse_date(row['created_at'])
-            db_entry = session.get(Post, row['id'])
-            if db_entry:
-                if(db_entry.change_seq < row['change_seq']):
-                    db_entry.image_id=row['id']
-                    db_entry.uploader_id=row['uploader_id'] 
-                    db_entry.approver_id=row['approver_id']
-                    db_entry.created_at=date_time
-                    db_entry.rating=row['rating']
-                    db_entry.description=row['description']  
-                    db_entry.file_ext=row['file_ext']   
-                    db_entry.file_size=row['file_size']   
-                    db_entry.parent_id=row['parent_id']  
-                    db_entry.change_seq=row['change_seq']
-                    db_entry.is_deleted=is_deleted
-                    db_entry.is_pending=is_pending
-                    db_entry.comment_count=row['comment_count']
-                    db_entry.fav_count=row['fav_count']
-                    db_entry.score=row['score']
-                    db_entry.up_score=row['up_score']
-                    db_entry.down_score=row['down_score']    
-            else:        
-                db_entry = Post(
-                    image_id=row['id'],
-                    uploader_id=row['uploader_id'],
-                    approver_id=row['approver_id'],
-                    created_at=date_time,
-                    rating=row['rating'],
-                    description=row['description'],
-                    file_ext=row['file_ext'],
-                    file_size=row['file_size'],
-                    parent_id=row['parent_id'],
-                    change_seq=row['change_seq'],
-                    is_deleted=is_deleted,
-                    is_pending=is_pending,
-                    comment_count=row['comment_count'],
-                    fav_count=row['fav_count'],
-                    score=row['score'],
-                    up_score=row['up_score'],
-                    down_score=row['down_score']
-                )
-                session.add(db_entry)
-        session.commit()
-
+    @validates('tag1_id', 'tag2_id')
+    def validate_tag_ids(self, key, tag_id):
+        if key == 'tag2_id' and self.tag1_id:
+            assert tag_id > self.tag1_id, "tag2_id must be greater than tag1_id"
+        return tag_id
 #-----------------------------------------------------------------------
 # tags_dict functions 
 #-----------------------------------------------------------------------
@@ -237,9 +194,28 @@ def process_tags(session, db_entry, tags):
         try:
             tag = tags_dict.get((tag_name, tag_type))
             db_entry.tags.append(tag)
+
+            if False:
+                # Update cooccurrences for each tag pair
+                for existing_tag in db_entry.tags:
+                    if existing_tag != tag:
+                        cooccur_entry = session.query(TagCooccurrence).filter(
+                            ((TagCooccurrence.tag1_id == existing_tag.tag_id) & (TagCooccurrence.tag2_id == tag.tag_id)) |
+                            ((TagCooccurrence.tag1_id == tag.tag_id) & (TagCooccurrence.tag2_id == existing_tag.tag_id))
+                        ).first()
+
+                        min_tag_id = min(existing_tag.tag_id, tag.tag_id)
+                        max_tag_id = max(existing_tag.tag_id, tag.tag_id)
+                        
+                        if cooccur_entry:
+                            cooccur_entry.cooccurrence_count += 1
+                        else:
+                            session.add(TagCooccurrence(tag1_id=min_tag_id, tag2_id=max_tag_id, cooccurrence_count=1))
+ 
         except Exception as e:
             print(f"Error occurred with tag_name: {tag_name}, tag_type: {tag_type}")
             print(f"Error details: {e}")
+
 #-----------------------------------------------------------------------
 # Stats functions
 #-----------------------------------------------------------------------
